@@ -4,20 +4,28 @@ import '../../dummy_data/dummy_data.dart';
 import '../../models/heat_risk.dart';
 import '../../models/hot_zone_report.dart';
 import '../../models/weather_info.dart';
+import '../../services/weather_service.dart';
 import '../../theme/app_theme.dart';
 import '../reports/create_hot_zone_report_screen.dart';
 import '../route/route_screen.dart';
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, this.onFindCoolSpot, this.onPlantTree});
 
   final VoidCallback? onFindCoolSpot;
   final VoidCallback? onPlantTree;
 
   @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  late final Future<WeatherInfo> _weatherFuture =
+      WeatherService().getCurrentWeather();
+
+  @override
   Widget build(BuildContext context) {
     final isWide = MediaQuery.sizeOf(context).width > 800;
-    final weather = DummyData.weather;
 
     return SingleChildScrollView(
       child: Center(
@@ -26,10 +34,14 @@ class HomeScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _HeroCard(
-                weather: weather,
-                hotZoneCount: DummyData.hotZones.length,
-                coolSpotCount: DummyData.coolSpots.length,
+              FutureBuilder<WeatherInfo>(
+                future: _weatherFuture,
+                initialData: DummyData.weather,
+                builder: (context, snapshot) => _HeroCard(
+                  weather: snapshot.data ?? DummyData.weather,
+                  hotZoneCount: DummyData.hotZones.length,
+                  coolSpotCount: DummyData.coolSpots.length,
+                ),
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(
@@ -74,7 +86,7 @@ class HomeScreen extends StatelessWidget {
                           iconColor: AppTheme.riskNone,
                           title: 'Find Cool Spot',
                           subtitle: '6 spots nearby',
-                          onTap: onFindCoolSpot ?? () {},
+                          onTap: widget.onFindCoolSpot ?? () {},
                         ),
                         _ActionCard(
                           icon: Icons.park_outlined,
@@ -82,7 +94,7 @@ class HomeScreen extends StatelessWidget {
                           iconColor: AppTheme.markerTree,
                           title: 'Plant a Tree 🌱',
                           subtitle: 'View community trees',
-                          onTap: onPlantTree ?? () {},
+                          onTap: widget.onPlantTree ?? () {},
                         ),
                       ],
                     ),

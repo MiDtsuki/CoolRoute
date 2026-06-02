@@ -243,40 +243,48 @@ class DummyData {
 
   static const layers = [
     EnvironmentalLayer(
-      name: 'Land Surface Temperature',
-      source: 'NASA GIBS',
+      name: 'Land Surface Temp',
+      source: 'NASA GIBS · MODIS Terra',
       status: 'Elevated over paved areas',
       value: '41.8 C',
+      gibsLayerId: 'MODIS_Terra_Land_Surface_Temp_Day',
     ),
     EnvironmentalLayer(
-      name: 'Sea Surface Temperature',
-      source: 'NASA GIBS',
+      name: 'Sea Surface Temp',
+      source: 'NASA GIBS · GHRSST MUR',
       status: 'Warm regional waters',
       value: '30.4 C',
+      gibsLayerId: 'GHRSST_L4_MUR_Sea_Surface_Temperature',
+      palette: LayerPalette.cool,
     ),
     EnvironmentalLayer(
       name: 'Cloud Cover',
-      source: 'Weather model',
+      source: 'NASA GIBS · MODIS Terra',
       status: 'Limited afternoon relief',
       value: '18%',
+      gibsLayerId: 'MODIS_Terra_Cloud_Fraction_Day',
+      palette: LayerPalette.cool,
     ),
     EnvironmentalLayer(
       name: 'Aerosol / Air Quality',
-      source: 'NASA GIBS',
+      source: 'NASA GIBS · MODIS Terra',
       status: 'Moderate haze signal',
       value: 'Medium',
+      gibsLayerId: 'MODIS_Terra_Aerosol',
     ),
     EnvironmentalLayer(
-      name: 'UV / Ozone-related Layer',
-      source: 'Weather API',
+      name: 'UV / Ozone Layer',
+      source: 'NASA GIBS · AIRS · WeatherAPI',
       status: 'Avoid direct exposure',
       value: 'Extreme',
+      gibsLayerId: 'AIRS_Total_Ozone_Daily_Day',
     ),
     EnvironmentalLayer(
       name: 'Weather Heat Index',
-      source: 'Weather API',
+      source: 'WeatherAPI · MODIS LST',
       status: 'Hydration breaks advised',
       value: '42 C',
+      gibsLayerId: 'MODIS_Terra_Land_Surface_Temp_Day',
     ),
   ];
 }
