@@ -1,0 +1,35 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Anyone (including anonymous users) can read hot zones and cool spots
+    match /hotZones/{docId} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasAll(['title', 'location', 'risk', 'createdAt'])
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0;
+      allow update: if request.auth != null
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['verifications']);
+      allow delete: if false;
+    }
+
+    match /coolSpots/{docId} {
+      allow read: if true;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasAll(['name', 'type', 'createdAt'])
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0;
+      allow update: if request.auth != null
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['verifiedBy']);
+      allow delete: if false;
+    }
+
+    // Users can only read and write their own profile
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}

@@ -105,6 +105,7 @@ class _StatusBadge extends StatelessWidget {
         'Open' || 'Working' => AppTheme.statusOpenBg,
         'Available'          => AppTheme.primaryLight,
         'Closed'             => AppTheme.statusClosedBg,
+        'Pending'            => AppTheme.markerOrange.withValues(alpha: .14),
         _                    => AppTheme.statusOpenBg,
       };
 
@@ -112,6 +113,7 @@ class _StatusBadge extends StatelessWidget {
         'Open' || 'Working' => AppTheme.statusOpen,
         'Available'          => AppTheme.primaryDark,
         'Closed'             => AppTheme.statusClosed,
+        'Pending'            => AppTheme.markerOrange,
         _                    => AppTheme.statusOpen,
       };
 

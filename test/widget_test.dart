@@ -4,7 +4,7 @@ import 'package:cool_route/app.dart';
 
 void main() {
   testWidgets('CoolRoute renders welcome and main tabs', (WidgetTester tester) async {
-    await tester.pumpWidget(const CoolRouteApp());
+    await tester.pumpWidget(const CoolRouteApp(firebaseReady: false));
 
     expect(find.text('CoolRoute'), findsWidgets);
     expect(find.text('Continue as prototype user'), findsOneWidget);

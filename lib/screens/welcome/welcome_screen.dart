@@ -56,7 +56,7 @@ class WelcomeScreen extends StatelessWidget {
                             width: double.infinity,
                             child: FilledButton(
                               onPressed: () {
-                                Navigator.of(context).pushReplacement(
+                                Navigator.of(context).push(
                                   MaterialPageRoute<void>(builder: (_) => const LoginScreen()),
                                 );
                               },

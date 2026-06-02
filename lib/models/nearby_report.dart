@@ -18,4 +18,25 @@ class NearbyReport {
   final HeatRisk risk;
   final String timeAgo;
   final int verifications;
+
+  factory NearbyReport.fromMap(Map<String, dynamic> map, String docId) {
+    return NearbyReport(
+      id: docId,
+      title: map['title'] as String? ?? '',
+      location: map['location'] as String? ?? '',
+      distance: map['distance'] as String? ?? 'Nearby',
+      risk: HeatRisk.values.byName(map['risk'] as String? ?? 'medium'),
+      timeAgo: map['timeAgo'] as String? ?? 'recently',
+      verifications: (map['verifications'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+        'title': title,
+        'location': location,
+        'distance': distance,
+        'risk': risk.name,
+        'timeAgo': timeAgo,
+        'verifications': verifications,
+      };
 }
