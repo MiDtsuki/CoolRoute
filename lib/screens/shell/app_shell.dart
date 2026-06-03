@@ -5,6 +5,7 @@ import '../../theme/app_theme.dart';
 import '../data/environmental_data_screen.dart';
 import '../home/home_screen.dart';
 import '../map/map_screen.dart';
+import '../profile/profile_screen.dart';
 import '../route/route_screen.dart';
 
 class AppShell extends StatefulWidget {
@@ -51,6 +52,7 @@ class _AppShellState extends State<AppShell> {
           initialTreesSelected: _openTreesFilter,
         ),
         const EnvironmentalDataScreen(),
+        const ProfileScreen(),
       ],
     );
 
@@ -94,6 +96,10 @@ class _AppShellState extends State<AppShell> {
                 icon: Icon(Icons.satellite_alt_outlined),
                 selectedIcon: Icon(Icons.satellite_alt),
                 label: 'Data'),
+            NavigationDestination(
+                icon: Icon(Icons.person_outline),
+                selectedIcon: Icon(Icons.person),
+                label: 'Profile'),
           ],
         ),
       ),
@@ -122,6 +128,7 @@ class _WebNavBar extends StatelessWidget implements PreferredSizeWidget {
     (Icons.alt_route_outlined, Icons.alt_route, 'Route'),
     (Icons.map_outlined, Icons.map, 'Map'),
     (Icons.satellite_alt_outlined, Icons.satellite_alt, 'Data'),
+    (Icons.person_outline, Icons.person, 'Profile'),
   ];
 
   @override

@@ -65,7 +65,7 @@ never reach the database.
 | Community Verification | 🟡 | "Still hot" / "Problem fixed" buttons exist in `hot_zone_bottom_sheet.dart` but are **no-ops**. `ReportService.verifyReport()` exists but is **never called**. No "shade available / water working / not accurate" options. |
 | Cool Spot Finder | ✅ | Real data + filters (Water / Shade / Air-conditioned / Open Now) on the Map. "Verified" filter exists on the (orphaned) standalone screen. |
 | NASA Environmental Data Viewer | 🟡 | 6 layers wired (Land Surface Temp, Sea Surface Temp, Cloud Cover, Aerosol/Air Quality, UV/Ozone, Weather Heat Index). **Missing the NDVI / vegetation layer** the spec calls out as candidate-planting-zone highlighting. |
-| Profile and Saved Routes | 🟡 | `profile_screen.dart` is fully built **but orphaned** — no navigation entry reaches it (nav is Home/Route/Map/Data only). All content hardcoded ("Nicha", fake saved routes). `UserProfileService` unused. |
+| Profile and Saved Routes | ✅ (core) | **Profile is now a live 5th tab.** `profile_screen.dart` loads the signed-in user's profile via `UserProfileService.getCurrentUserProfile()` (Firestore `users/{uid}`, auto-created on first load), shows contribution stats (reports / verifications / saved routes) + account type (guest vs email), and supports **editing** name/role/home-area/heat-sensitivity (persists via `updateProfile`) and **sign out** (mobile had none before). Falls back to dummy if Firebase is down. *Still TODO: stats counters (`reportCount`/`verifiedReportCount`) aren't incremented yet because reports/verification don't persist (P0); saved routes aren't written yet (needs `addSavedRoute` wired from the Route tab).* |
 | Tree-Planting Events | ❌ | Not implemented beyond static pin viewing. No event model with RSVP/watering/donation/attendance, no creation flow. |
 
 ---
@@ -96,10 +96,11 @@ never reads from these collections**, so seeded data is invisible.
 ## Orphaned / dead code to reconcile
 
 These exist but are unreachable or unused. Either wire them up or delete them:
-- `lib/screens/profile/profile_screen.dart` — no nav entry.
+- ~~`lib/screens/profile/profile_screen.dart`~~ — ✅ now a live 5th tab.
+- ~~`user_profile_service.dart`~~ — ✅ now used by the Profile tab (+ new `updateProfile`).
 - `lib/screens/cool_spots/cool_spots_screen.dart` — superseded by the Map "Cool Spots" mode.
-- `lib/services/report_service.dart`, `cool_spot_service.dart`, `user_profile_service.dart`.
-- Verify buttons + `CreateHotZoneReportScreen` submit are wired to the UI but not to data.
+- `lib/services/report_service.dart`, `cool_spot_service.dart` — still unused (P0).
+- Verify buttons + `CreateHotZoneReportScreen` submit are wired to the UI but not to data (P0).
 
 ---
 
