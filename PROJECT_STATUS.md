@@ -21,6 +21,45 @@ Keys live in `.env` (gitignored — never committed). Firebase provider toggles 
 
 ---
 
+## ✅ Checklist (tick as features land)
+
+**Core data integrations**
+- [x] Weather (WeatherAPI) — live
+- [x] Google Maps — live (one `.env` key serves web + Android)
+- [x] NASA GIBS environmental viewer — live (keyless)
+- [x] OSM cool-spot finder — live (keyless)
+- [x] Firebase **Anonymous** auth — enabled + verified
+- [ ] Firebase **Email/Password** + **Google** providers — enable in console
+- [ ] Confirm Firestore database created + `backend/firestore.rules` deployed
+
+**Screens / navigation**
+- [x] Home dashboard
+- [x] Map (hot zones · cool spots · trees)
+- [x] Environmental data (NASA)
+- [x] Profile tab — Firestore-backed (edit + sign out)
+- [ ] Route screen — currently UI-only mockup
+
+**P0 — community / data-write (next)**
+- [ ] Persist hot-zone reports to Firestore (`ReportService.submitHotZoneReport`)
+- [ ] Read hot zones from Firestore (replace `DummyData.hotZones`)
+- [ ] Wire community verification ("Still hot" / "Problem fixed" → `verifyReport`)
+- [ ] Increment profile stat counters on report / verify
+
+**P1 — headline feature**
+- [ ] Real heat-safe routing + heat scoring
+
+**P2 — community + climate depth**
+- [ ] Tree-planting events (create · RSVP · water · donate)
+- [ ] NDVI vegetation layer in the Data viewer
+- [x] Profile + saved-routes screen (core)
+- [ ] Persist saved routes from the Route tab (`addSavedRoute`)
+
+**P3 — housekeeping**
+- [x] API keys in `.env`, Anonymous auth enabled
+- [ ] Remove/integrate orphaned `cool_spots_screen`, `report_service`, `cool_spot_service`
+
+---
+
 ## TL;DR — where we are
 
 The app is a **well-built UI prototype with a few features fully wired to real data**, but
@@ -77,14 +116,14 @@ main.dart
   → load .env (optional) → init Firebase (optional) → load web Maps JS → runApp
 app.dart  → MaterialApp + AuthGate
 AuthGate  → signed in ? AppShell + seed Firestore once : WelcomeScreen → LoginScreen
-AppShell  → 4 tabs (IndexedStack): Home · Route · Map · Data
+AppShell  → 5 tabs (IndexedStack): Home · Route · Map · Data · Profile
             (bottom nav < 800px, top nav bar ≥ 800px)
 ```
 
 **Service layer pattern (real-or-dummy fallback):**
 - ✅ Used live: `WeatherService`, `PlacesService`, `NasaGibsService`, `LocationService`,
-  `EnvironmentalDataService`, `FirebaseAuthService`, `FirestoreSeedService`.
-- ❌ Defined but **never called**: `ReportService`, `CoolSpotService`, `UserProfileService`.
+  `EnvironmentalDataService`, `FirebaseAuthService`, `FirestoreSeedService`, `UserProfileService`.
+- ❌ Defined but **never called**: `ReportService`, `CoolSpotService` (P0).
 
 **Firestore** (`backend/firestore.rules`): `hotZones` + `coolSpots` are world-readable,
 create requires auth, updates limited to `verifications` / `verifiedBy`, no deletes;
@@ -130,8 +169,9 @@ pattern; keep everything **web-safe** (no `dart:io`).
    vs. extending the current report chooser.
 6. **NDVI vegetation layer.** Add an NDVI GIBS layer to `DummyData.layers` and surface
    low-vegetation areas as candidate planting zones (ties into #5).
-7. **Real Profile + Saved Routes.** Make `ProfileScreen` reachable (add nav/menu entry), back it
-   with `UserProfileService` + Firestore `users/{uid}`, and persist saved routes / preferences.
+7. ✅ **DONE (core)** — Profile is a live 5th tab backed by `UserProfileService` + Firestore
+   `users/{uid}`, with edit + sign out. Still TODO: persist saved routes from the Route tab
+   (`addSavedRoute`) and increment stat counters once reports/verification persist (P0).
 
 ### P3 — config / housekeeping
 8. ✅ **DONE** — Real API keys added to `.env` (`GOOGLE_MAPS_API_KEY`, `WEATHER_API_KEY`) and
@@ -149,5 +189,27 @@ flutter pub get
 flutter run -d chrome      # web
 # or: flutter run           # Android device/emulator
 ```
+Use `-d edge` instead of `-d chrome` if Chrome isn't installed (Edge is Chromium-based).
 With an empty `.env`, the app runs on built-in fallbacks (painted map + dummy weather). Firebase
 falls back to the dummy-data prototype path if not configured. `flutter analyze` is currently clean.
+
+---
+
+## History / Changelog
+
+Newest first. Dates are absolute.
+
+- **2026-06-03** — Added Firestore-backed **Profile tab** (5th tab, mobile + web). Loads
+  `users/{uid}` (auto-created), edits name/role/home-area/heat-sensitivity, stats, sign out.
+  Fixed a false "could not save" error by driving the UI from local state (Firestore is
+  offline-first) instead of the server-ack Future. Added `UserProfileService.updateProfile()`.
+  Pushed in commit `e8439c5`.
+- **2026-06-03** — **Live data milestone.** Added `WEATHER_API_KEY` + `GOOGLE_MAPS_API_KEY` to
+  `.env`; enabled Firebase **Anonymous** auth. Verified Weather, Google Maps (web + Android),
+  NASA GIBS, OSM cool spots, and guest sign-in all run on live data. Pushed in commit `0304834`.
+  (Diagnosed: invalid first weather key → WeatherAPI code 2006; corrected. `admin-restricted-operation`
+  on guest login → Anonymous provider was disabled; enabled in console.)
+- **2026-06-03** — Initial **audit** of the codebase vs the spec PDF; created this
+  `PROJECT_STATUS.md`.
+- **2026-06-03** — Cloned repo, ran `flutter pub get` (first time — fixed the "Target of URI
+  doesn't exist" analyzer errors), created `.env`, verified collaborator push access to `main`.
