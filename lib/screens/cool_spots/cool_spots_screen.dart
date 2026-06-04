@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../dummy_data/dummy_data.dart';
 import '../../models/cool_spot.dart';
+import '../../services/location_service.dart';
+import '../../services/places_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_card.dart';
 import '../../widgets/cool_spot_card.dart';
@@ -18,6 +21,104 @@ class CoolSpotsScreen extends StatefulWidget {
 
 class _CoolSpotsScreenState extends State<CoolSpotsScreen> {
   bool showMap = false;
+
+  /// Type chips act as an OR group; "Open now" / "Verified" are AND constraints.
+  static const _typeFilters = {'Shade', 'Water', 'Air-conditioned'};
+
+  final TextEditingController _searchCtrl = TextEditingController();
+
+  /// The nearby spots actually being shown — starts with the bundled set so the
+  /// list is never empty, then gets replaced by real OpenStreetMap results.
+  List<CoolSpot> _spots = DummyData.coolSpots;
+  final Set<String> _activeFilters = {};
+  String _query = '';
+
+  LatLng? _userLocation;
+  bool _locationIsReal = false;
+  bool _loading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _findNearby();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  // Resolves the device location, then pulls real nearby cool spots from
+  // OpenStreetMap around it. Falls back to the bundled set (and the default
+  // city) whenever location or the network request is unavailable.
+  Future<void> _findNearby() async {
+    if (_loading) return;
+    setState(() => _loading = true);
+
+    final location = await LocationService().currentLocation();
+    if (!mounted) return;
+
+    List<CoolSpot> spots;
+    try {
+      spots = await PlacesService().nearbyCoolSpots(
+        lat: location.latitude,
+        lng: location.longitude,
+        radiusMeters: CoolRouteMap.nearbyRadiusMeters,
+      );
+    } catch (_) {
+      spots = const [];
+    }
+    if (!mounted) return;
+
+    setState(() {
+      _userLocation = LatLng(location.latitude, location.longitude);
+      _locationIsReal = location.isReal;
+      _spots = spots.isNotEmpty ? spots : DummyData.coolSpots;
+      _loading = false;
+    });
+
+    if (!location.isReal) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Location unavailable — showing the default area.'),
+        ),
+      );
+    }
+  }
+
+  // Applies the search query and active filter chips to the loaded spots.
+  List<CoolSpot> get _filteredSpots {
+    final q = _query.trim().toLowerCase();
+    final types = _activeFilters.intersection(_typeFilters);
+    return _spots.where((s) {
+      if (q.isNotEmpty) {
+        final hay =
+            '${s.name} ${s.displayCategory} ${s.type} ${s.amenity}'.toLowerCase();
+        if (!hay.contains(q)) return false;
+      }
+      if (types.isNotEmpty && !types.any((f) => _matchesType(s, f))) return false;
+      if (_activeFilters.contains('Open Now') &&
+          s.openStatus.toLowerCase().contains('closed')) {
+        return false;
+      }
+      if (_activeFilters.contains('Verified') && s.verifiedBy <= 0) return false;
+      return true;
+    }).toList();
+  }
+
+  bool _matchesType(CoolSpot s, String filter) {
+    if (filter == 'Air-conditioned') {
+      return s.type == 'Air-conditioned' || s.type == 'Indoor cooling';
+    }
+    return s.type == filter;
+  }
+
+  void _toggleFilter(String label) {
+    setState(() {
+      if (!_activeFilters.add(label)) _activeFilters.remove(label);
+    });
+  }
 
   void _showCoolSpotDetails(CoolSpot spot) {
     showModalBottomSheet<void>(
@@ -40,6 +141,7 @@ class _CoolSpotsScreenState extends State<CoolSpotsScreen> {
   @override
   Widget build(BuildContext context) {
     final isWide = MediaQuery.sizeOf(context).width > 800;
+    final spots = _filteredSpots;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -49,9 +151,32 @@ class _CoolSpotsScreenState extends State<CoolSpotsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Cool spots',
+                      style: Theme.of(context).textTheme.headlineLarge,
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: _loading ? null : _findNearby,
+                    tooltip: 'Find cool spots near me',
+                    icon: _loading
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.my_location),
+                  ),
+                ],
+              ),
               Text(
-                'Cool spots',
-                style: Theme.of(context).textTheme.headlineLarge,
+                _locationIsReal
+                    ? 'Showing relief points near your location'
+                    : 'Showing relief points in the default area',
+                style: Theme.of(context).textTheme.bodySmall,
               ),
               const SizedBox(height: 12),
               SizedBox(
@@ -64,12 +189,23 @@ class _CoolSpotsScreenState extends State<CoolSpotsScreen> {
               ),
               const SizedBox(height: 12),
               TextField(
+                controller: _searchCtrl,
+                onChanged: (value) => setState(() => _query = value),
                 decoration: InputDecoration(
                   prefixIcon: const Icon(
                     Icons.search,
                     size: 20,
                     color: AppColors.textSecondary,
                   ),
+                  suffixIcon: _query.isEmpty
+                      ? null
+                      : IconButton(
+                          icon: const Icon(Icons.close, size: 18),
+                          onPressed: () {
+                            _searchCtrl.clear();
+                            setState(() => _query = '');
+                          },
+                        ),
                   hintText: 'Search water, shade, air conditioning',
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(AppTheme.radiusMD),
@@ -100,15 +236,22 @@ class _CoolSpotsScreenState extends State<CoolSpotsScreen> {
                     setState(() => showMap = value.first),
               ),
               const SizedBox(height: 10),
-              const SingleChildScrollView(
+              SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
                   children: [
-                    _CoolSpotFilter(label: 'Shade', selected: true),
-                    _CoolSpotFilter(label: 'Water'),
-                    _CoolSpotFilter(label: 'Air-conditioned'),
-                    _CoolSpotFilter(label: 'Open Now'),
-                    _CoolSpotFilter(label: 'Verified'),
+                    for (final label in const [
+                      'Shade',
+                      'Water',
+                      'Air-conditioned',
+                      'Open Now',
+                      'Verified',
+                    ])
+                      _CoolSpotFilter(
+                        label: label,
+                        selected: _activeFilters.contains(label),
+                        onTap: () => _toggleFilter(label),
+                      ),
                   ],
                 ),
               ),
@@ -116,12 +259,21 @@ class _CoolSpotsScreenState extends State<CoolSpotsScreen> {
               if (showMap)
                 CoolRouteMap(
                   hotZones: DummyData.hotZones,
-                  coolSpots: DummyData.coolSpots,
+                  coolSpots: spots,
+                  userLocation: _userLocation,
+                  onCoolSpotTap: _showCoolSpotDetails,
                 )
               else ...[
-                const SectionHeader(title: 'Closest relief points'),
+                SectionHeader(title: 'Closest relief points (${spots.length})'),
                 const SizedBox(height: 10),
-                if (isWide)
+                if (_loading && _spots.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 40),
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (spots.isEmpty)
+                  const _EmptyResults()
+                else if (isWide)
                   GridView.builder(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
@@ -132,14 +284,14 @@ class _CoolSpotsScreenState extends State<CoolSpotsScreen> {
                           mainAxisSpacing: 10,
                           childAspectRatio: 3.6,
                         ),
-                    itemCount: DummyData.coolSpots.length,
+                    itemCount: spots.length,
                     itemBuilder: (_, i) => CoolSpotCard(
-                      spot: DummyData.coolSpots[i],
+                      spot: spots[i],
                       onView: _showCoolSpotDetails,
                     ),
                   )
                 else
-                  for (final spot in DummyData.coolSpots) ...[
+                  for (final spot in spots) ...[
                     CoolSpotCard(spot: spot, onView: _showCoolSpotDetails),
                     const SizedBox(height: 10),
                   ],
@@ -147,6 +299,28 @@ class _CoolSpotsScreenState extends State<CoolSpotsScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _EmptyResults extends StatelessWidget {
+  const _EmptyResults();
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        children: [
+          const Icon(Icons.search_off, color: AppColors.textSecondary),
+          const SizedBox(height: 8),
+          Text(
+            'No cool spots match your search or filters.',
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        ],
       ),
     );
   }
@@ -255,10 +429,15 @@ class _CoolSpotDetailsSheet extends StatelessWidget {
 }
 
 class _CoolSpotFilter extends StatelessWidget {
-  const _CoolSpotFilter({required this.label, this.selected = false});
+  const _CoolSpotFilter({
+    required this.label,
+    required this.onTap,
+    this.selected = false,
+  });
 
   final String label;
   final bool selected;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -267,7 +446,7 @@ class _CoolSpotFilter extends StatelessWidget {
       child: FilterChip(
         label: Text(label),
         selected: selected,
-        onSelected: (_) {},
+        onSelected: (_) => onTap(),
       ),
     );
   }

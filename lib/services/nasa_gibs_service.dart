@@ -9,6 +9,35 @@ class NasaGibsService {
   static const _host = 'wvs.earthdata.nasa.gov';
   static const _path = '/api/v1/snapshot';
 
+  /// WMTS tile endpoint (EPSG:3857 / Web Mercator — matches flutter_map's
+  /// default CRS and Google Maps). Free, no API key, no registration.
+  static const _wmtsBase = 'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best';
+
+  /// Builds a flutter_map `urlTemplate` for a GIBS layer's tiles. The `{z}`,
+  /// `{x}`, `{y}` placeholders are filled in by flutter_map per tile; GIBS
+  /// orders the REST path as TileMatrix/TileRow/TileCol → `{z}/{y}/{x}`.
+  String wmtsTemplate({
+    required String layerId,
+    required String tileMatrixSet,
+    String format = 'png',
+    DateTime? date,
+  }) {
+    final stamp = _formatDate(date ?? _defaultDate());
+    return '$_wmtsBase/$layerId/default/$stamp/$tileMatrixSet/{z}/{y}/{x}.$format';
+  }
+
+  /// Static reference basemap (no time dimension) drawn beneath data layers so
+  /// land, ocean and relief are visible even where the science layer is sparse.
+  String get basemapTemplate =>
+      '$_wmtsBase/BlueMarble_ShadedRelief_Bathymetry/default/'
+      'GoogleMapsCompatible_Level8/{z}/{y}/{x}.jpeg';
+
+  /// Coastline + country outlines overlay drawn on top of data layers.
+  /// Non-temporal reference layer, so the WMTS path has no date segment.
+  String get coastlinesTemplate =>
+      '$_wmtsBase/Coastlines_15m/default/'
+      'GoogleMapsCompatible_Level13/{z}/{y}/{x}.png';
+
   /// Global bounding box (S, W, N, E) so the snapshot covers the whole Earth.
   /// The UI wraps the rendered image in an [InteractiveViewer] so the user can
   /// pan + pinch-zoom around the globe — this is what makes the data

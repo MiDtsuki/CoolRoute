@@ -6,7 +6,11 @@ class EnvironmentalLayer {
     required this.source,
     required this.status,
     required this.value,
+    required this.blurb,
     this.gibsLayerId,
+    this.gibsTileMatrixSet = 'GoogleMapsCompatible_Level7',
+    this.gibsMaxZoom = 7,
+    this.gibsFormat = 'png',
     this.palette = LayerPalette.warm,
   });
 
@@ -15,10 +19,26 @@ class EnvironmentalLayer {
   final String status;
   final String value;
 
-  /// NASA GIBS layer identifier used to fetch the satellite snapshot.
+  /// One-sentence plain-language explanation of what this index measures and
+  /// why it matters for heat exposure. Shown under the value in the info panel.
+  final String blurb;
+
+  /// NASA GIBS layer identifier used to fetch the satellite imagery.
   /// Null for layers that don't have a corresponding GIBS product
   /// (e.g. the derived Weather Heat Index — that one shows LST imagery).
   final String? gibsLayerId;
+
+  /// WMTS tile-matrix set for this product. Each GIBS layer is published at a
+  /// fixed maximum resolution, e.g. `GoogleMapsCompatible_Level7`.
+  final String gibsTileMatrixSet;
+
+  /// Deepest zoom level GIBS serves real tiles for. flutter_map upscales
+  /// beyond this rather than requesting tiles that would 404.
+  final int gibsMaxZoom;
+
+  /// Tile image format — science layers are usually `png` (with transparency),
+  /// true-colour imagery is `jpeg`.
+  final String gibsFormat;
 
   final LayerPalette palette;
 }

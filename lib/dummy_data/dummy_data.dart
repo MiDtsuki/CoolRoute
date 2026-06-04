@@ -247,6 +247,8 @@ class DummyData {
       source: 'NASA GIBS · MODIS Terra',
       status: 'Elevated over paved areas',
       value: '41.8 C',
+      blurb: 'How hot the ground itself gets. Concrete and asphalt run far '
+          'hotter than the air, driving up street-level heat.',
       gibsLayerId: 'MODIS_Terra_Land_Surface_Temp_Day',
     ),
     EnvironmentalLayer(
@@ -254,6 +256,8 @@ class DummyData {
       source: 'NASA GIBS · GHRSST MUR',
       status: 'Warm regional waters',
       value: '30.4 C',
+      blurb: 'Temperature of the ocean surface. Warmer seas pump more humidity '
+          'inland, making the heat feel heavier.',
       gibsLayerId: 'GHRSST_L4_MUR_Sea_Surface_Temperature',
       palette: LayerPalette.cool,
     ),
@@ -262,7 +266,11 @@ class DummyData {
       source: 'NASA GIBS · MODIS Terra',
       status: 'Limited afternoon relief',
       value: '18%',
+      blurb: 'Share of the sky covered by cloud. More cloud means more shade '
+          'and a cooler midday; clear skies mean stronger sun.',
       gibsLayerId: 'MODIS_Terra_Cloud_Fraction_Day',
+      gibsTileMatrixSet: 'GoogleMapsCompatible_Level6',
+      gibsMaxZoom: 6,
       palette: LayerPalette.cool,
     ),
     EnvironmentalLayer(
@@ -270,20 +278,30 @@ class DummyData {
       source: 'NASA GIBS · MODIS Terra',
       status: 'Moderate haze signal',
       value: 'Medium',
+      blurb: 'Dust, smoke and haze particles in the air. Higher values mean '
+          'dirtier air that is harder to breathe outdoors.',
       gibsLayerId: 'MODIS_Terra_Aerosol',
+      gibsTileMatrixSet: 'GoogleMapsCompatible_Level6',
+      gibsMaxZoom: 6,
     ),
     EnvironmentalLayer(
       name: 'UV / Ozone Layer',
-      source: 'NASA GIBS · AIRS · WeatherAPI',
+      source: 'NASA GIBS · OMPS · WeatherAPI',
       status: 'Avoid direct exposure',
       value: 'Extreme',
-      gibsLayerId: 'AIRS_Total_Ozone_Daily_Day',
+      blurb: 'Strength of UV radiation reaching the ground. Higher means '
+          'faster sunburn and greater skin and eye risk.',
+      gibsLayerId: 'OMPS_Ozone_Total_Column',
+      gibsTileMatrixSet: 'GoogleMapsCompatible_Level6',
+      gibsMaxZoom: 6,
     ),
     EnvironmentalLayer(
       name: 'Weather Heat Index',
       source: 'WeatherAPI · MODIS LST',
       status: 'Hydration breaks advised',
       value: '42 C',
+      blurb: 'What the heat actually feels like once humidity is added to air '
+          'temperature — the real comfort and risk level.',
       gibsLayerId: 'MODIS_Terra_Land_Surface_Temp_Day',
     ),
   ];

@@ -40,6 +40,7 @@ class EnvironmentalDataService {
             source: layer.source,
             status: _uvStatus(weather.uvIndex),
             value: weather.uvIndex,
+            blurb: layer.blurb,
             gibsLayerId: layer.gibsLayerId,
             palette: layer.palette,
           );
@@ -49,6 +50,7 @@ class EnvironmentalDataService {
             source: layer.source,
             status: _heatStatus(weather.feelsLikeC),
             value: '${weather.feelsLikeC} C',
+            blurb: layer.blurb,
             gibsLayerId: layer.gibsLayerId,
             palette: layer.palette,
           );
