@@ -14,6 +14,7 @@ class HotZoneReport {
     required this.y,
     this.lat,
     this.lng,
+    this.verifiedBy = const [],
   });
 
   final String id;
@@ -25,6 +26,9 @@ class HotZoneReport {
   final int verifications;
   final HeatRisk risk;
 
+  /// User ids that have already verified this report (one verification each).
+  final List<String> verifiedBy;
+
   /// Relative position (0–1) used only by the painted fallback map.
   final double x;
   final double y;
@@ -34,6 +38,30 @@ class HotZoneReport {
   final double? lng;
 
   bool get hasLatLng => lat != null && lng != null;
+
+  bool isVerifiedBy(String? uid) => uid != null && verifiedBy.contains(uid);
+
+  HotZoneReport copyWith({
+    int? verifications,
+    String? timeAgo,
+    List<String>? verifiedBy,
+  }) {
+    return HotZoneReport(
+      id: id,
+      title: title,
+      location: location,
+      category: category,
+      description: description,
+      timeAgo: timeAgo ?? this.timeAgo,
+      verifications: verifications ?? this.verifications,
+      risk: risk,
+      x: x,
+      y: y,
+      lat: lat,
+      lng: lng,
+      verifiedBy: verifiedBy ?? this.verifiedBy,
+    );
+  }
 
   factory HotZoneReport.fromMap(Map<String, dynamic> map, String docId) {
     return HotZoneReport(
@@ -49,6 +77,7 @@ class HotZoneReport {
       y: (map['y'] as num?)?.toDouble() ?? 0.5,
       lat: (map['lat'] as num?)?.toDouble(),
       lng: (map['lng'] as num?)?.toDouble(),
+      verifiedBy: List<String>.from(map['verifiedBy'] as List? ?? const []),
     );
   }
 

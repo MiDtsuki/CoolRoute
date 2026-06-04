@@ -12,11 +12,15 @@ class HotZoneBottomSheet extends StatelessWidget {
     required this.report,
     required this.nearbyReports,
     this.onClose,
+    this.onVerify,
+    this.alreadyVerified = false,
   });
 
   final HotZoneReport report;
   final List<NearbyReport> nearbyReports;
   final VoidCallback? onClose;
+  final ValueChanged<HotZoneReport>? onVerify;
+  final bool alreadyVerified;
 
   @override
   Widget build(BuildContext context) {
@@ -61,7 +65,11 @@ class HotZoneBottomSheet extends StatelessWidget {
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(
                     AppTheme.spaceMD, AppTheme.spaceXS, AppTheme.spaceMD, AppTheme.spaceLG),
-                child: ReportPanelContent(report: report, nearbyReports: nearbyReports),
+                child: ReportPanelContent(
+                    report: report,
+                    nearbyReports: nearbyReports,
+                    onVerify: onVerify,
+                    alreadyVerified: alreadyVerified),
               ),
             ),
           ],
@@ -78,10 +86,14 @@ class ReportPanelContent extends StatelessWidget {
     super.key,
     required this.report,
     required this.nearbyReports,
+    this.onVerify,
+    this.alreadyVerified = false,
   });
 
   final HotZoneReport report;
   final List<NearbyReport> nearbyReports;
+  final ValueChanged<HotZoneReport>? onVerify;
+  final bool alreadyVerified;
 
   Color get _riskColor => switch (report.risk) {
         HeatRisk.extreme || HeatRisk.high => AppTheme.riskExtreme,
@@ -161,10 +173,21 @@ class ReportPanelContent extends StatelessWidget {
               style: tt.bodySmall!.copyWith(color: AppTheme.textHint)),
         ]),
         const SizedBox(height: AppTheme.spaceMD),
+        if (alreadyVerified) ...[
+          Row(children: [
+            const Icon(Icons.check_circle, size: 16, color: AppTheme.primary),
+            const SizedBox(width: 6),
+            Text('You verified this report',
+                style: tt.bodySmall!.copyWith(color: AppTheme.primary)),
+          ]),
+          const SizedBox(height: AppTheme.spaceSM),
+        ],
         Row(children: [
           Expanded(
             child: OutlinedButton(
-              onPressed: () {},
+              onPressed: (onVerify == null || alreadyVerified)
+                  ? null
+                  : () => onVerify!(report),
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppTheme.riskExtreme,
                 side: const BorderSide(color: AppTheme.riskExtreme),
@@ -174,7 +197,12 @@ class ReportPanelContent extends StatelessWidget {
           ),
           const SizedBox(width: AppTheme.spaceSM),
           Expanded(
-            child: OutlinedButton(onPressed: () {}, child: const Text('Problem fixed')),
+            child: OutlinedButton(
+              onPressed: (onVerify == null || alreadyVerified)
+                  ? null
+                  : () => onVerify!(report),
+              child: const Text('Problem fixed'),
+            ),
           ),
           const SizedBox(width: AppTheme.spaceSM),
           Expanded(

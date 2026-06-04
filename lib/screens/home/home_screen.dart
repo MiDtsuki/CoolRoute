@@ -4,6 +4,8 @@ import '../../dummy_data/dummy_data.dart';
 import '../../models/heat_risk.dart';
 import '../../models/hot_zone_report.dart';
 import '../../models/weather_info.dart';
+import '../../services/report_refresh.dart';
+import '../../services/report_service.dart';
 import '../../services/weather_service.dart';
 import '../../theme/app_theme.dart';
 import '../reports/create_hot_zone_report_screen.dart';
@@ -23,6 +25,28 @@ class _HomeScreenState extends State<HomeScreen> {
   late final Future<WeatherInfo> _weatherFuture =
       WeatherService().getCurrentWeather();
 
+  // Live community hot zones from Firestore (seeded with dummy for instant UI).
+  List<HotZoneReport> _hotZones = DummyData.hotZones;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHotZones();
+    hotZoneRevision.addListener(_loadHotZones);
+  }
+
+  @override
+  void dispose() {
+    hotZoneRevision.removeListener(_loadHotZones);
+    super.dispose();
+  }
+
+  Future<void> _loadHotZones() async {
+    final zones = await ReportService().getHotZoneReports();
+    if (!mounted) return;
+    setState(() => _hotZones = zones);
+  }
+
   @override
   Widget build(BuildContext context) {
     final isWide = MediaQuery.sizeOf(context).width > 800;
@@ -39,7 +63,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 initialData: DummyData.weather,
                 builder: (context, snapshot) => _HeroCard(
                   weather: snapshot.data ?? DummyData.weather,
-                  hotZoneCount: DummyData.hotZones.length,
+                  hotZoneCount: _hotZones.length,
                   coolSpotCount: DummyData.coolSpots.length,
                 ),
               ),
@@ -109,9 +133,9 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: ListView.separated(
                   scrollDirection: Axis.horizontal,
                   padding: const EdgeInsets.symmetric(horizontal: AppTheme.spaceMD),
-                  itemCount: 3,
+                  itemCount: _hotZones.length < 3 ? _hotZones.length : 3,
                   separatorBuilder: (_, _) => const SizedBox(width: AppTheme.spaceSM),
-                  itemBuilder: (_, i) => _AlertChip(report: DummyData.hotZones[i]),
+                  itemBuilder: (_, i) => _AlertChip(report: _hotZones[i]),
                 ),
               ),
               const SizedBox(height: AppTheme.spaceLG),

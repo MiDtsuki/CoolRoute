@@ -66,10 +66,21 @@ class UserProfileService {
     await _db.collection('users').doc(userId).set(data, SetOptions(merge: true));
   }
 
+  // Counter bumps use set+merge (not update) so they succeed even if the user's
+  // profile document hasn't been created yet — FieldValue.increment seeds the
+  // field from 0 in that case.
   Future<void> incrementReportCount(String userId) async {
-    await _db.collection('users').doc(userId).update({
-      'reportCount': FieldValue.increment(1),
-    });
+    await _db.collection('users').doc(userId).set(
+      {'reportCount': FieldValue.increment(1)},
+      SetOptions(merge: true),
+    );
+  }
+
+  Future<void> incrementVerifiedReportCount(String userId) async {
+    await _db.collection('users').doc(userId).set(
+      {'verifiedReportCount': FieldValue.increment(1)},
+      SetOptions(merge: true),
+    );
   }
 
   Future<void> addSavedRoute(String userId, String routeName) async {

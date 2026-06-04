@@ -43,6 +43,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     });
   }
 
+  // Manual refresh — re-reads the profile (e.g. after reporting/verifying to
+  // pull updated contribution counters).
+  void _refresh() {
+    setState(() => _loading = true);
+    _load();
+  }
+
   // Describes the underlying auth account for the "Account" row.
   String _accountLabel() {
     try {
@@ -157,6 +164,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           height: 14,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         ),
+                      const Spacer(),
+                      IconButton(
+                        onPressed: _loading ? null : _refresh,
+                        icon: const Icon(Icons.refresh),
+                        tooltip: 'Refresh',
+                        color: AppTheme.primary,
+                      ),
                     ],
                   ),
                   const SizedBox(height: AppTheme.spaceMD),

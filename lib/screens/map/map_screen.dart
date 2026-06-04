@@ -9,8 +9,12 @@ import '../../models/heat_risk.dart';
 import '../../models/hot_zone_report.dart';
 import '../../models/nearby_report.dart';
 import '../../models/tree_pin.dart';
+import '../../services/firebase_auth_service.dart';
 import '../../services/location_service.dart';
 import '../../services/places_service.dart';
+import '../../services/report_refresh.dart';
+import '../../services/report_service.dart';
+import '../../services/user_profile_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/cool_spot_card.dart';
 import '../../widgets/coolroute_map.dart';
@@ -44,9 +48,13 @@ class _MapScreenState extends State<MapScreen> {
   List<CoolSpot> _coolSpots = DummyData.coolSpots;
   bool _loadingSpots = false;
 
-  // Hot zones shown on the map. Mutable so freshly reported (pending) zones can
-  // be appended without a backend round-trip.
-  final List<HotZoneReport> _hotZones = List.of(DummyData.hotZones);
+  // Hot zones shown on the map. Seeded with local data for instant content,
+  // then replaced with live Firestore reports. Mutable so freshly reported
+  // (pending) zones can be appended without a backend round-trip.
+  List<HotZoneReport> _hotZones = List.of(DummyData.hotZones);
+
+  // Nearby reports shown in the detail panel; replaced with live data on load.
+  List<NearbyReport> _nearbyReports = DummyData.nearbyReports.take(3).toList();
 
   // Live search query (matches names/categories across the active dataset).
   final TextEditingController _searchCtrl = TextEditingController();
@@ -75,7 +83,7 @@ class _MapScreenState extends State<MapScreen> {
   ];
 
   List<String> get _filters => _coolSpotsMode ? _spotFilters : _zoneFilters;
-  List<NearbyReport> get _nearby => DummyData.nearbyReports.take(3).toList();
+  List<NearbyReport> get _nearby => _nearbyReports;
   bool get _showTrees => !_coolSpotsMode && _activeFilter == _treesFilter;
 
   // Cool spots after applying the active filter and the search query.
@@ -150,6 +158,87 @@ class _MapScreenState extends State<MapScreen> {
     super.initState();
     _activeFilter = widget.initialTreesSelected ? _treesFilter : 'All';
     _resolveLocation();
+    _loadHotZones();
+    // Reload when a report is created elsewhere (e.g. the Home form).
+    hotZoneRevision.addListener(_loadHotZones);
+  }
+
+  // Loads community hot-zone reports from Firestore (with a dummy fallback baked
+  // into the service), replacing the seed list.
+  Future<void> _loadHotZones() async {
+    final zones = await ReportService().getHotZoneReports();
+    final nearby = await ReportService().getNearbyReports();
+    if (!mounted) return;
+    setState(() {
+      _hotZones = zones;
+      _nearbyReports = nearby.take(3).toList();
+    });
+  }
+
+  // Community verification — one per user per report. Optimistically bumps the
+  // count, then runs a transaction that only counts a *new* verifier; reverts
+  // the optimistic bump (and credits nothing) if the user already verified it.
+  Future<void> _onVerifyZone(HotZoneReport zone) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final uid = _currentUid();
+    if (uid == null) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Sign in to verify reports.')),
+      );
+      return;
+    }
+    if (zone.isVerifiedBy(uid)) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('You already verified this report.')),
+      );
+      return;
+    }
+
+    void replace(HotZoneReport r) {
+      final i = _hotZones.indexWhere((z) => z.id == zone.id);
+      if (i != -1) _hotZones[i] = r;
+      if (_selectedZone?.id == zone.id) _selectedZone = r;
+    }
+
+    // Optimistic: bump count + record self in verifiedBy so the buttons disable.
+    setState(() => replace(zone.copyWith(
+          verifications: zone.verifications + 1,
+          verifiedBy: [...zone.verifiedBy, uid],
+        )));
+
+    try {
+      final counted = await ReportService().verifyReport(zone.id, uid);
+      if (counted) {
+        await UserProfileService().incrementVerifiedReportCount(uid);
+        messenger.showSnackBar(
+          const SnackBar(content: Text('Thanks — your verification was recorded.')),
+        );
+      } else {
+        // Already verified server-side, or the report isn't persisted yet
+        // (a fresh optimistic pin) — undo the optimistic bump.
+        setState(() => replace(zone));
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text(
+                "You already verified this, or it isn't saved yet — refresh and try again."),
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() => replace(zone));
+      debugPrint('VERIFY: verify error: $e');
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not record verification. Try again.')),
+      );
+    }
+  }
+
+  String? _currentUid() {
+    try {
+      return FirebaseAuthService().currentUser?.uid;
+    } catch (_) {
+      return null;
+    }
   }
 
   // Asks for the device location and centres the map on the user's 3km area.
@@ -202,6 +291,7 @@ class _MapScreenState extends State<MapScreen> {
 
   @override
   void dispose() {
+    hotZoneRevision.removeListener(_loadHotZones);
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -450,6 +540,8 @@ class _MapScreenState extends State<MapScreen> {
                     report: _selectedZone!,
                     nearbyReports: _nearby,
                     onClose: _onDismiss,
+                    onVerify: _onVerifyZone,
+                    alreadyVerified: _selectedZone!.isVerifiedBy(_currentUid()),
                   )
                 : _selectedTree != null
                 ? _TreePinSidePanel(
@@ -491,6 +583,9 @@ class _MapScreenState extends State<MapScreen> {
               report: _selectedZone ?? DummyData.hotZones.first,
               nearbyReports: _nearby,
               onClose: _onDismiss,
+              onVerify: _onVerifyZone,
+              alreadyVerified:
+                  (_selectedZone ?? DummyData.hotZones.first).isVerifiedBy(_currentUid()),
             ),
           ),
         ),

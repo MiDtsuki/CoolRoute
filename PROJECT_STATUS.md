@@ -39,11 +39,15 @@ Keys live in `.env` (gitignored — never committed). Firebase provider toggles 
 - [x] Profile tab — Firestore-backed (edit + sign out)
 - [ ] Route screen — currently UI-only mockup
 
-**P0 — community / data-write (next)**
-- [ ] Persist hot-zone reports to Firestore (`ReportService.submitHotZoneReport`)
-- [ ] Read hot zones from Firestore (replace `DummyData.hotZones`)
-- [ ] Wire community verification ("Still hot" / "Problem fixed" → `verifyReport`)
-- [ ] Increment profile stat counters on report / verify
+**P0 — community / data-write** ✅ DONE
+- [x] Persist hot-zone reports to Firestore (`ReportService.submitHotZoneReport`)
+- [x] Read hot zones from Firestore (Map + Home, replacing `DummyData.hotZones`)
+- [x] Wire community verification ("Still hot" / "Problem fixed" → `verifyReport`)
+- [x] Increment profile stat counters on report / verify (refresh on Profile to see)
+- [x] One verification per user per report (transaction + `verifiedBy`; needs rules deploy)
+- [x] New reports appear live on Map + Home without restart (refresh signal)
+- [ ] *(follow-up)* persist cool-spot suggestions; richer verification options
+  (shade available / water working / not accurate); time-based re-verification
 
 **P1 — headline feature**
 - [ ] Real heat-safe routing + heat scoring
@@ -66,17 +70,15 @@ The app is a **well-built UI prototype with a few features fully wired to real d
 the community/data-write half is mostly mock. Concretely:
 
 - **Genuinely working with real data:** Cool Spot Finder (OpenStreetMap), Weather (WeatherAPI),
-  NASA GIBS viewer, Auth (email/Google/guest code paths), Home dashboard, the map itself.
-- **UI only, not connected:** Heat-safe routing, Hot Zone report **persistence**, Community
-  verification.
+  NASA GIBS viewer, Auth (email/Google/guest), Home dashboard, the map, the **Profile tab**, and
+  the **community hot-zone loop** (report → persist → appears on map → verify → profile stats).
+- **UI only, not connected:** Heat-safe routing (the headline P1 feature is still a dead form).
 - **Not implemented:** Tree-planting **events** (RSVP/water/donate), NDVI vegetation overlay,
-  a "Reports" tab, real Profile / Saved Routes.
-- **Dead/orphaned code:** `ReportService`, `CoolSpotService`, `UserProfileService`,
-  `ProfileScreen`, `CoolSpotsScreen` — all defined but never called from the live UI.
+  a "Reports" tab, persisted saved routes, cool-spot *suggestions* (persistence).
+- **Dead/orphaned code:** `CoolSpotService`, `CoolSpotsScreen` — defined but unused.
 
-The single biggest gap between code and spec: **Firestore is configured and even seeded on
-login, but the UI reads/writes go to hardcoded `DummyData` instead of the services.** Reports
-never reach the database.
+With P0 done, hot-zone reports and verifications now reach Firestore and flow back into the UI;
+the main remaining mock is **heat-safe routing (P1)**.
 
 ---
 
@@ -85,7 +87,7 @@ never reach the database.
 | Concept | Status | Notes |
 |---|---|---|
 | Heat-safe routing | 🟡 | `route_screen.dart` shows 3 dummy routes from `DummyData.routes`. Start/Destination fields and "Find safer route" button are **no-ops** (`onPressed: () {}`). `RouteService` just returns dummy. No routing engine, no heat scoring. |
-| Community hot zone reports | 🟡 | Full report UI in two places, but **nothing persists**. `ReportSpotSheet` (Map) only drops a local "pending" pin via a callback. `CreateHotZoneReportScreen` (Home) just shows a snackbar. `ReportService.submitHotZoneReport()` exists but is **never called**. |
+| Community hot zone reports | ✅ | Reports now **persist to Firestore**. `ReportSpotSheet` (Map) drops an optimistic pin then writes via `ReportService.submitHotZoneReport()`; `CreateHotZoneReportScreen` (Home, now with field controllers) writes too. Map + Home **read** reports via `getHotZoneReports()`. Both bump the author's `reportCount`. |
 | Cool spot finder | ✅ | **Best-implemented feature.** `PlacesService` queries the OSM Overpass API for real nearby libraries, malls, water points, parks, cafés, etc. — real lat/lng, real distances, category buckets. Falls back to dummy on failure. Filters + live search work. |
 | Weather integration | ✅ | `WeatherService` → WeatherAPI.com (`current.json`), parses temp/feels-like/humidity/UV. Falls back to dummy Bangkok weather when no key. Drives Home hero + Data info panel. |
 | NASA GIBS viewer | ✅ | `NasaGibsService` builds Worldview Snapshot image URLs; `environmental_data_screen.dart` renders them in a pan/zoom `InteractiveViewer` with date presets + custom date picker + 6 layers. |
@@ -100,8 +102,8 @@ never reach the database.
 | Login and Sign-up | ✅ (code) | `FirebaseAuthService` + `login_screen.dart` implement email/password, Google (native `GoogleAuthProvider` — popup on web, provider flow on mobile, **no `google_sign_in` package needed**), and anonymous/guest. **Requires Firebase console config** (providers enabled) to actually authenticate. "profile, role, preferences, saved data" → not real (see Profile row). |
 | Home Dashboard | ✅ | Weather hero (temp, feels-like, humidity, UV, "Extreme risk" badge), 4 quick actions (Route, Report Hot Zone, Find Cool Spot, Plant a Tree), recent-alert chips. Responsive 2-col / 4-col. |
 | Heat-Safe Route Suggestion | 🟡 | See "Heat-safe routing" above. Inputs non-functional; no real start/destination handling. |
-| Hot Zone Report | 🟡 | UI complete + validation; **no DB write**. Spec also wants tree-planting as a *separate report type from a Reports tab* → the report chooser only offers **Hot Zone / Cool Spot**, and **there is no Reports tab**. |
-| Community Verification | 🟡 | "Still hot" / "Problem fixed" buttons exist in `hot_zone_bottom_sheet.dart` but are **no-ops**. `ReportService.verifyReport()` exists but is **never called**. No "shade available / water working / not accurate" options. |
+| Hot Zone Report | ✅ | Persists to Firestore (see §1 row). Spec's tree-planting-as-report-type + dedicated Reports tab still pending (P2). Cool-spot suggestions still local-only (P0 follow-up). |
+| Community Verification | ✅ (core) | "Still hot" / "Problem fixed" now call `ReportService.verifyReport(id)` (optimistic count bump + persist) and credit the verifier's `verifiedReportCount`. Follow-up: per-user "already verified" guard and the richer option set (shade available / water working / not accurate). |
 | Cool Spot Finder | ✅ | Real data + filters (Water / Shade / Air-conditioned / Open Now) on the Map. "Verified" filter exists on the (orphaned) standalone screen. |
 | NASA Environmental Data Viewer | 🟡 | 6 layers wired (Land Surface Temp, Sea Surface Temp, Cloud Cover, Aerosol/Air Quality, UV/Ozone, Weather Heat Index). **Missing the NDVI / vegetation layer** the spec calls out as candidate-planting-zone highlighting. |
 | Profile and Saved Routes | ✅ (core) | **Profile is now a live 5th tab.** `profile_screen.dart` loads the signed-in user's profile via `UserProfileService.getCurrentUserProfile()` (Firestore `users/{uid}`, auto-created on first load), shows contribution stats (reports / verifications / saved routes) + account type (guest vs email), and supports **editing** name/role/home-area/heat-sensitivity (persists via `updateProfile`) and **sign out** (mobile had none before). Falls back to dummy if Firebase is down. *Still TODO: stats counters (`reportCount`/`verifiedReportCount`) aren't incremented yet because reports/verification don't persist (P0); saved routes aren't written yet (needs `addSavedRoute` wired from the Route tab).* |
@@ -122,13 +124,15 @@ AppShell  → 5 tabs (IndexedStack): Home · Route · Map · Data · Profile
 
 **Service layer pattern (real-or-dummy fallback):**
 - ✅ Used live: `WeatherService`, `PlacesService`, `NasaGibsService`, `LocationService`,
-  `EnvironmentalDataService`, `FirebaseAuthService`, `FirestoreSeedService`, `UserProfileService`.
-- ❌ Defined but **never called**: `ReportService`, `CoolSpotService` (P0).
+  `EnvironmentalDataService`, `FirebaseAuthService`, `FirestoreSeedService`, `UserProfileService`,
+  `ReportService`.
+- ❌ Defined but **never called**: `CoolSpotService` (cool-spot suggestions not yet persisted).
 
 **Firestore** (`backend/firestore.rules`): `hotZones` + `coolSpots` are world-readable,
 create requires auth, updates limited to `verifications` / `verifiedBy`, no deletes;
-`users/{uid}` is owner-only. Seeded on first login via `FirestoreSeedService` — **but the UI
-never reads from these collections**, so seeded data is invisible.
+`users/{uid}` is owner-only. Seeded on first login via `FirestoreSeedService`. The Map + Home
+now **read `hotZones`** (and write new reports + verifications); cool spots on the map still come
+from OSM live, and `coolSpots` writes (suggestions) remain a TODO.
 
 ---
 
@@ -138,8 +142,9 @@ These exist but are unreachable or unused. Either wire them up or delete them:
 - ~~`lib/screens/profile/profile_screen.dart`~~ — ✅ now a live 5th tab.
 - ~~`user_profile_service.dart`~~ — ✅ now used by the Profile tab (+ new `updateProfile`).
 - `lib/screens/cool_spots/cool_spots_screen.dart` — superseded by the Map "Cool Spots" mode.
-- `lib/services/report_service.dart`, `cool_spot_service.dart` — still unused (P0).
-- Verify buttons + `CreateHotZoneReportScreen` submit are wired to the UI but not to data (P0).
+- ~~`report_service.dart`~~ — ✅ now used (submit / read / verify).
+- ~~Verify buttons + `CreateHotZoneReportScreen` submit~~ — ✅ now wired to Firestore.
+- `lib/services/cool_spot_service.dart` — still unused (cool-spot suggestions not persisted).
 
 ---
 
@@ -148,14 +153,15 @@ These exist but are unreachable or unused. Either wire them up or delete them:
 Ordered by impact-to-spec vs. effort. Follow the existing **service + real-or-dummy fallback**
 pattern; keep everything **web-safe** (no `dart:io`).
 
-### P0 — close the "looks done but isn't" gaps
-1. **Persist hot-zone reports.** Wire `ReportSpotSheet._submit()` and
-   `CreateHotZoneReportScreen._submit()` to `ReportService.submitHotZoneReport()` (pass the
-   current `userId`). Keep the optimistic local pin.
-2. **Read reports from Firestore.** Replace `DummyData.hotZones` usage in `map_screen.dart` /
-   `home_screen.dart` with `ReportService.getHotZoneReports()` (already has dummy fallback).
-3. **Wire community verification.** Make "Still hot" / "Problem fixed" call
-   `ReportService.verifyReport(id)`; add the spec's other verification options.
+### P0 — close the "looks done but isn't" gaps ✅ DONE
+1. ✅ **Persist hot-zone reports.** `ReportSpotSheet._submit()` (optimistic pin → write) and
+   `CreateHotZoneReportScreen._submit()` (added field controllers) call
+   `ReportService.submitHotZoneReport()` with the current `userId`.
+2. ✅ **Read reports from Firestore.** Map + Home load via `ReportService.getHotZoneReports()`
+   (dummy fallback intact).
+3. ✅ **Wire community verification.** "Still hot" / "Problem fixed" → `ReportService.verifyReport(id)`,
+   optimistic count bump, credit verifier's `verifiedReportCount`. *Follow-up:* per-user
+   already-verified guard + richer option set.
 
 ### P1 — the headline feature
 4. **Real heat-safe routing.** Replace the dummy route list + dead form with a routing API
@@ -199,6 +205,19 @@ falls back to the dummy-data prototype path if not configured. `flutter analyze`
 
 Newest first. Dates are absolute.
 
+- **2026-06-03** — **P0 fixes from testing.** (A) Report sheet's *Type* selector is now a
+  scrollable modal picker (dropdown overlays leaked wheel-scroll to the Google Map). (B) New
+  reports show live on Map + Home via a `hotZoneRevision` refresh signal (no restart). (D/E)
+  Verification is now **one per user per report** — `verifyReport(id, uid)` runs a transaction
+  against a `verifiedBy` list, the buttons disable once you've verified, and the counter only
+  bumps on a genuinely new verification. **Requires deploying `backend/firestore.rules`** (now
+  allows `verifications` + `verifiedBy`). *(Not yet committed.)*
+- **2026-06-03** — **P0 community/data-write wired.** Hot-zone reports now persist to Firestore
+  (`ReportService.submitHotZoneReport` returns the new doc id; `CreateHotZoneReportScreen` gained
+  field controllers). Map + Home read reports via `getHotZoneReports()`. "Still hot" / "Problem
+  fixed" call `verifyReport()` with an optimistic count bump. Author `reportCount` +
+  `verifiedReportCount` increment (set+merge so they work pre-doc-creation); Profile gained a
+  refresh button to pull updated counters. `flutter analyze` clean. *(Not yet committed.)*
 - **2026-06-03** — Added Firestore-backed **Profile tab** (5th tab, mobile + web). Loads
   `users/{uid}` (auto-created), edits name/role/home-area/heat-sensitivity, stats, sign out.
   Fixed a false "could not save" error by driving the UI from local state (Firestore is

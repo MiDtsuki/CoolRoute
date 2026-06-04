@@ -4,6 +4,10 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../models/cool_spot.dart';
 import '../models/heat_risk.dart';
 import '../models/hot_zone_report.dart';
+import '../services/firebase_auth_service.dart';
+import '../services/report_refresh.dart';
+import '../services/report_service.dart';
+import '../services/user_profile_service.dart';
 import '../theme/app_theme.dart';
 
 enum ReportSpotMode { coolSpot, hotZone }
@@ -123,14 +127,21 @@ class _ReportSpotSheetState extends State<ReportSpotSheet> {
                   validator: _required,
                 ),
                 const SizedBox(height: AppTheme.spaceSM),
-                DropdownButtonFormField<String>(
-                  initialValue: _type,
-                  decoration: const InputDecoration(labelText: 'Type'),
-                  items: [
-                    for (final t in _typeOptions)
-                      DropdownMenuItem(value: t, child: Text(t)),
-                  ],
-                  onChanged: (v) => setState(() => _type = v ?? _type),
+                // A tap-to-open scrollable picker rather than a dropdown menu:
+                // dropdown overlays leak mouse-wheel scroll to the Google Map
+                // platform view on web (it zooms instead of scrolling the list).
+                InkWell(
+                  onTap: _pickType,
+                  borderRadius: BorderRadius.circular(AppTheme.radiusMD),
+                  child: InputDecorator(
+                    decoration: const InputDecoration(labelText: 'Type'),
+                    child: Row(
+                      children: [
+                        Expanded(child: Text(_type, style: tt.bodyMedium)),
+                        const Icon(Icons.arrow_drop_down, color: AppTheme.textHint),
+                      ],
+                    ),
+                  ),
                 ),
                 const SizedBox(height: AppTheme.spaceSM),
                 TextFormField(
@@ -176,25 +187,29 @@ class _ReportSpotSheetState extends State<ReportSpotSheet> {
     return null;
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     final messenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
     final name = _name.text.trim();
     final problem = _problem.text.trim();
     final description = _description.text.trim();
+    final combined = problem.isEmpty ? description : '$problem. $description';
     final lat = widget.anchor.latitude;
     final lng = widget.anchor.longitude;
+    final uid = _currentUid();
 
     if (_isHot) {
+      // Optimistic pin (temp id) so it shows immediately, then persist.
       widget.onHotZone?.call(
         HotZoneReport(
           id: 'pending-hot-$name',
           title: name,
           location: 'Reported at your location',
           category: _type,
-          description: problem.isEmpty ? description : '$problem. $description',
+          description: combined,
           timeAgo: 'just now',
-          verifications: 0,
+          verifications: 1,
           risk: HeatRisk.high,
           x: .5,
           y: .5,
@@ -202,33 +217,151 @@ class _ReportSpotSheetState extends State<ReportSpotSheet> {
           lng: lng,
         ),
       );
-    } else {
-      final bucket =
-          _coolTypes.firstWhere((t) => t.$1 == _type).$2;
-      widget.onCoolSpot?.call(
-        CoolSpot(
-          id: 'pending-cool-$name',
-          name: name,
-          type: bucket,
+      navigator.pop();
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Hot zone reported. Saving…')),
+      );
+      try {
+        await ReportService().submitHotZoneReport(
+          title: name,
+          location: 'Reported at your location',
           category: _type,
-          distance: 'Here',
-          distanceMeters: 0,
-          amenity: problem.isEmpty ? description : '$problem — $description',
-          openStatus: 'Pending',
-          verifiedBy: 0,
-          source: 'You (pending)',
-          lat: lat,
-          lng: lng,
+          description: combined,
+          risk: HeatRisk.high,
           x: .5,
           y: .5,
-        ),
-      );
+          lat: lat,
+          lng: lng,
+          userId: uid,
+        );
+        if (uid != null) {
+          await UserProfileService().incrementReportCount(uid);
+        }
+        // Tell live screens (Map, Home) to reload so the new report appears
+        // with its real Firestore id.
+        notifyHotZonesChanged();
+      } catch (e) {
+        // Durable in Firestore's local cache; will sync. Logged for diagnosis.
+        debugPrint('VERIFY: hot zone persist error: $e');
+      }
+      return;
     }
 
-    Navigator.of(context).pop();
+    // Cool spots remain a local pending pin for now (not yet persisted).
+    final bucket = _coolTypes.firstWhere((t) => t.$1 == _type).$2;
+    widget.onCoolSpot?.call(
+      CoolSpot(
+        id: 'pending-cool-$name',
+        name: name,
+        type: bucket,
+        category: _type,
+        distance: 'Here',
+        distanceMeters: 0,
+        amenity: problem.isEmpty ? description : '$problem — $description',
+        openStatus: 'Pending',
+        verifiedBy: 0,
+        source: 'You (pending)',
+        lat: lat,
+        lng: lng,
+        x: .5,
+        y: .5,
+      ),
+    );
+    navigator.pop();
     messenger.showSnackBar(
       const SnackBar(
-        content: Text('Report added to the map as pending. Thanks!'),
+        content: Text('Cool spot added to the map as pending. Thanks!'),
+      ),
+    );
+  }
+
+  String? _currentUid() {
+    try {
+      return FirebaseAuthService().currentUser?.uid;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<void> _pickType() async {
+    FocusScope.of(context).unfocus();
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _TypePickerSheet(options: _typeOptions, selected: _type),
+    );
+    if (picked != null && mounted) setState(() => _type = picked);
+  }
+}
+
+// A scrollable, modal type picker. A full-surface modal sheet reliably captures
+// mouse-wheel scrolling on web (unlike a dropdown overlay over the map).
+class _TypePickerSheet extends StatelessWidget {
+  const _TypePickerSheet({required this.options, required this.selected});
+
+  final List<String> options;
+  final String selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppTheme.bgCard,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: ConstrainedBox(
+          constraints:
+              BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.6),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 10),
+                child: SizedBox(
+                  width: 32,
+                  height: 4,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: AppTheme.borderMid,
+                      borderRadius: BorderRadius.all(Radius.circular(AppTheme.radiusPill)),
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(
+                    AppTheme.spaceMD, 0, AppTheme.spaceMD, AppTheme.spaceSM),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Select type', style: tt.labelLarge),
+                ),
+              ),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.only(bottom: AppTheme.spaceMD),
+                  itemCount: options.length,
+                  separatorBuilder: (_, _) => const Divider(height: 1),
+                  itemBuilder: (_, i) {
+                    final option = options[i];
+                    final isSelected = option == selected;
+                    return ListTile(
+                      title: Text(option, style: tt.bodyLarge),
+                      trailing: isSelected
+                          ? const Icon(Icons.check, color: AppTheme.primary)
+                          : null,
+                      onTap: () => Navigator.of(context).pop(option),
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

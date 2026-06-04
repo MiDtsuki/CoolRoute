@@ -11,11 +11,15 @@ class HotZoneSidePanel extends StatelessWidget {
     required this.report,
     required this.nearbyReports,
     this.onClose,
+    this.onVerify,
+    this.alreadyVerified = false,
   });
 
   final HotZoneReport report;
   final List<NearbyReport> nearbyReports;
   final VoidCallback? onClose;
+  final ValueChanged<HotZoneReport>? onVerify;
+  final bool alreadyVerified;
 
   @override
   Widget build(BuildContext context) {
@@ -54,7 +58,11 @@ class HotZoneSidePanel extends StatelessWidget {
               child: SingleChildScrollView(
                 padding: const EdgeInsets.fromLTRB(
                     AppTheme.spaceMD, AppTheme.spaceMD, AppTheme.spaceMD, AppTheme.spaceLG),
-                child: ReportPanelContent(report: report, nearbyReports: nearbyReports),
+                child: ReportPanelContent(
+                    report: report,
+                    nearbyReports: nearbyReports,
+                    onVerify: onVerify,
+                    alreadyVerified: alreadyVerified),
               ),
             ),
           ],

@@ -38,7 +38,8 @@ class ReportService {
     }
   }
 
-  Future<void> submitHotZoneReport({
+  /// Persists a new hot-zone report and returns the new Firestore document id.
+  Future<String> submitHotZoneReport({
     required String title,
     required String location,
     required String category,
@@ -50,7 +51,7 @@ class ReportService {
     double? lng,
     String? userId,
   }) async {
-    await _db.collection('hotZones').add({
+    final ref = await _db.collection('hotZones').add({
       'title': title,
       'location': location,
       'category': category,
@@ -65,11 +66,26 @@ class ReportService {
       'userId': userId ?? 'anonymous',
       'createdAt': FieldValue.serverTimestamp(),
     });
+    return ref.id;
   }
 
-  Future<void> verifyReport(String reportId) async {
-    await _db.collection('hotZones').doc(reportId).update({
-      'verifications': FieldValue.increment(1),
+  /// Records a verification by [userId] for [reportId], enforcing **one per
+  /// user** via a transaction. Returns `true` if this was a new verification,
+  /// `false` if the user already verified it (or the report no longer exists).
+  Future<bool> verifyReport(String reportId, String userId) async {
+    final ref = _db.collection('hotZones').doc(reportId);
+    return _db.runTransaction<bool>((tx) async {
+      final snap = await tx.get(ref);
+      if (!snap.exists) return false;
+      final data = snap.data() ?? const {};
+      final verifiedBy = List<String>.from(data['verifiedBy'] as List? ?? const []);
+      if (verifiedBy.contains(userId)) return false;
+      verifiedBy.add(userId);
+      tx.update(ref, {
+        'verifications': FieldValue.increment(1),
+        'verifiedBy': verifiedBy,
+      });
+      return true;
     });
   }
 }
