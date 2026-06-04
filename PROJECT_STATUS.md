@@ -58,13 +58,23 @@ Keys live in `.env` (gitignored — never committed). Firebase provider toggles 
 
 **P2 — community + climate depth**
 - [x] Tree-planting events (create · RSVP · water · donate · attend) — Firestore-backed
-- [ ] NDVI vegetation layer in the Data viewer
+- [x] NDVI vegetation layer in the Data viewer
 - [x] Profile + saved-routes screen (core)
 - [ ] Persist saved routes from the Route tab (`addSavedRoute`)
 
 **P3 — housekeeping**
 - [x] API keys in `.env`, Anonymous auth enabled
-- [ ] Remove/integrate orphaned `cool_spots_screen`, `report_service`, `cool_spot_service`
+- [ ] Enable Firebase **Email/Password** + **Google** sign-in providers (console)
+- [ ] Remove/integrate orphaned `cool_spots_screen` (now the only orphan)
+
+**Polish / known cosmetic issues (non-blocking)**
+- [ ] Silence GIBS sparse-tile **404 console spam** — `Coastlines_15m` and land-only layers (LST,
+  NDVI) legitimately have no tiles over ocean/empty areas, so NASA returns 404 there. The map
+  renders fine; it's just noisy. Fix: add an `errorTileCallback` / transparent error tile in
+  `gibs_tile_map.dart`.
+- [ ] NDVI layer: custom icon + show the actual (snapped) composite month in the info panel.
+- [ ] Fold cool spots / shade into route heat-scoring (currently hot-zone proximity only).
+- [ ] Dedicated "Reports/Community" list view for tree-planting events (spec's Reports tab).
 
 ---
 
@@ -76,8 +86,7 @@ the community/data-write half is mostly mock. Concretely:
 - **Genuinely working with real data:** Cool Spot Finder (OpenStreetMap), Weather (WeatherAPI),
   NASA GIBS viewer, Auth (email/Google/guest), Home dashboard, the map, the **Profile tab**, and
   the **community hot-zone loop** (report → persist → appears on map → verify → profile stats).
-- **Not implemented:** NDVI vegetation overlay, a dedicated "Reports/Community" list view,
-  persisted saved routes.
+- **Not implemented:** a dedicated "Reports/Community" list view, persisted saved routes.
 - **Dead/orphaned code:** `CoolSpotsScreen` — superseded by the Map's Cool Spots mode.
 
 With P0 and P1 done, the core loops are real: the community loop (report → persist → map →
@@ -109,7 +118,7 @@ Remaining gaps are mostly P2: tree-planting events, an NDVI layer, and persisted
 | Hot Zone Report | ✅ | Persists to Firestore (see §1 row). Spec's tree-planting-as-report-type + dedicated Reports tab still pending (P2). Cool-spot suggestions still local-only (P0 follow-up). |
 | Community Verification | ✅ (core) | "Still hot" / "Problem fixed" now call `ReportService.verifyReport(id)` (optimistic count bump + persist) and credit the verifier's `verifiedReportCount`. Follow-up: per-user "already verified" guard and the richer option set (shade available / water working / not accurate). |
 | Cool Spot Finder | ✅ | Real data + filters (Water / Shade / Air-conditioned / Open Now) on the Map. "Verified" filter exists on the (orphaned) standalone screen. |
-| NASA Environmental Data Viewer | 🟡 | 6 layers wired (Land Surface Temp, Sea Surface Temp, Cloud Cover, Aerosol/Air Quality, UV/Ozone, Weather Heat Index), now rendered as a live tiled WMTS map (see NASA GIBS row) with per-layer blurbs. **Still missing the NDVI / vegetation layer** the spec calls out for candidate-planting-zone highlighting. |
+| NASA Environmental Data Viewer | ✅ | 7 layers as a live tiled WMTS map (see NASA GIBS row) with per-layer blurbs: Land Surface Temp, Sea Surface Temp, Cloud Cover, Aerosol/Air Quality, UV/Ozone, Weather Heat Index, and **Vegetation (NDVI)** — the spec's planting-zone layer (sparse = plant here). NDVI is a monthly composite, so its tile date is snapped back to a published month. |
 | Profile and Saved Routes | ✅ (core) | **Profile is now a live 5th tab.** `profile_screen.dart` loads the signed-in user's profile via `UserProfileService.getCurrentUserProfile()` (Firestore `users/{uid}`, auto-created on first load), shows contribution stats (reports / verifications / saved routes) + account type (guest vs email), and supports **editing** name/role/home-area/heat-sensitivity (persists via `updateProfile`) and **sign out** (mobile had none before). Falls back to dummy if Firebase is down. *Still TODO: stats counters (`reportCount`/`verifiedReportCount`) aren't incremented yet because reports/verification don't persist (P0); saved routes aren't written yet (needs `addSavedRoute` wired from the Route tab).* |
 | Tree-Planting Events | ✅ (core) | Posted from the Map's Report sheet (the spec's "Reports tab" surface). `TreeEvent`-backed (`TreePin` model extended) Firestore `treeEvents`: title, when, goal, organizer, description, location. Contributions (RSVP / water / donate / attend) are one-per-user via `TreeEventService.contribute` transaction; buttons show counts and disable once joined. *Follow-up:* a dedicated Reports/Community list view; NDVI overlay. |
 
@@ -210,6 +219,16 @@ falls back to the dummy-data prototype path if not configured. `flutter analyze`
 
 Newest first. Dates are absolute.
 
+- **2026-06-04** — *Note:* the Data tab logs many `HTTP 404` lines for `Coastlines_15m` and the
+  land-only layers (LST/NDVI). These are **benign** — those GIBS layers are sparse and have no
+  tiles over ocean/empty areas, so NASA 404s there while the map still renders correctly. Logged
+  as a polish item (silence via `errorTileCallback`); not a bug.
+- **2026-06-04** — **NDVI vegetation layer.** Added a 7th Data-tab layer, **Vegetation (NDVI)**
+  (`MODIS_Terra_L3_NDVI_Monthly` @ `GoogleMapsCompatible_Level7`) — the spec's planting-zone layer
+  (sparse/low-NDVI = good planting target, tying into tree-planting events). NDVI is a monthly
+  composite whose current-month tiles aren't published yet, so `EnvironmentalLayer.gibsMonthly`
+  flags it and `NasaGibsService.wmtsTemplate` snaps its tile date back to a completed month.
+  Verified tiles return 200. `flutter analyze` clean. *(Uncommitted.)*
 - **2026-06-04** — **P2: Tree-planting events.** Community events now persist to Firestore
   (`treeEvents`): created from the Map's Report sheet ("Start a Tree-Planting Event" → title,
   when, goal, location, description), shown under the Trees 🌱 filter. Contributions —
