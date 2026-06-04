@@ -1141,7 +1141,6 @@ class _CoolSpotsListPanel extends StatelessWidget {
           ),
         ),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           children: [
             GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -1175,7 +1174,7 @@ class _CoolSpotsListPanel extends StatelessWidget {
                 ],
               ),
             ),
-            Flexible(
+            Expanded(
               child: _CoolSpotsList(
                 spots: spots,
                 loading: loading,
@@ -1186,7 +1185,6 @@ class _CoolSpotsListPanel extends StatelessWidget {
                   AppTheme.spaceMD,
                   AppTheme.spaceLG,
                 ),
-                shrinkWrap: true,
               ),
             ),
           ],
@@ -1266,14 +1264,12 @@ class _CoolSpotsList extends StatelessWidget {
     required this.loading,
     required this.onSpotView,
     required this.padding,
-    this.shrinkWrap = false,
   });
 
   final List<CoolSpot> spots;
   final bool loading;
   final ValueChanged<CoolSpot> onSpotView;
   final EdgeInsets padding;
-  final bool shrinkWrap;
 
   @override
   Widget build(BuildContext context) {
@@ -1304,7 +1300,6 @@ class _CoolSpotsList extends StatelessWidget {
       );
     }
     return ListView.separated(
-      shrinkWrap: shrinkWrap,
       padding: padding,
       itemCount: spots.length,
       separatorBuilder: (_, _) => const SizedBox(height: AppTheme.spaceSM),
@@ -1553,7 +1548,6 @@ class _ZonesListPanel extends StatelessWidget {
           ),
         ),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           children: [
             GestureDetector(
               behavior: HitTestBehavior.opaque,
@@ -1590,7 +1584,7 @@ class _ZonesListPanel extends StatelessWidget {
                 ],
               ),
             ),
-            Flexible(
+            Expanded(
               child: _ZonesList(
                 zones: zones,
                 trees: trees,
@@ -1598,7 +1592,6 @@ class _ZonesListPanel extends StatelessWidget {
                 userLocation: userLocation,
                 onZoneView: onZoneView,
                 onTreeView: onTreeView,
-                shrinkWrap: true,
                 padding: const EdgeInsets.fromLTRB(
                   AppTheme.spaceMD,
                   AppTheme.spaceXS,
@@ -1698,7 +1691,6 @@ class _ZonesList extends StatelessWidget {
     required this.onZoneView,
     required this.onTreeView,
     required this.padding,
-    this.shrinkWrap = false,
   });
 
   final List<HotZoneReport> zones;
@@ -1708,7 +1700,6 @@ class _ZonesList extends StatelessWidget {
   final ValueChanged<HotZoneReport> onZoneView;
   final ValueChanged<TreePin> onTreeView;
   final EdgeInsets padding;
-  final bool shrinkWrap;
 
   @override
   Widget build(BuildContext context) {
@@ -1729,7 +1720,6 @@ class _ZonesList extends StatelessWidget {
     }
     if (showTrees) {
       return ListView.separated(
-        shrinkWrap: shrinkWrap,
         padding: padding,
         itemCount: trees.length,
         separatorBuilder: (_, _) => const SizedBox(height: AppTheme.spaceSM),
@@ -1738,7 +1728,6 @@ class _ZonesList extends StatelessWidget {
       );
     }
     return ListView.separated(
-      shrinkWrap: shrinkWrap,
       padding: padding,
       itemCount: zones.length,
       separatorBuilder: (_, _) => const SizedBox(height: AppTheme.spaceSM),

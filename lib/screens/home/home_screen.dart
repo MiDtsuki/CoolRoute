@@ -167,7 +167,12 @@ class _HomeScreenState extends State<HomeScreen> {
                                   .copyWith(color: AppTheme.textHint))
                         else
                           for (final r in recentZones) ...[
-                            _AlertCard(report: r),
+                            _AlertCard(
+                              report: r,
+                              onTap: widget.onShowHotZone == null
+                                  ? null
+                                  : () => widget.onShowHotZone!(r),
+                            ),
                             const SizedBox(height: AppTheme.spaceSM),
                           ],
                       ],
@@ -410,8 +415,9 @@ class _ActionCard extends StatelessWidget {
 // ── Alert card (web sidebar) ─────────────────────────────────────────────────
 
 class _AlertCard extends StatelessWidget {
-  const _AlertCard({required this.report});
+  const _AlertCard({required this.report, this.onTap});
   final HotZoneReport report;
+  final VoidCallback? onTap;
 
   Color get _dotColor => switch (report.risk) {
         HeatRisk.extreme || HeatRisk.high => AppTheme.riskExtreme,
@@ -428,49 +434,54 @@ class _AlertCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: AppTheme.bgCard,
+    return Material(
+      color: AppTheme.bgCard,
+      borderRadius: BorderRadius.circular(AppTheme.radiusLG),
+      child: InkWell(
         borderRadius: BorderRadius.circular(AppTheme.radiusLG),
-        border: Border.all(color: AppTheme.borderLight, width: 0.5),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(AppTheme.spaceMD),
-        child: Row(
-          children: [
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: _dotBg,
-                shape: BoxShape.circle,
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.all(AppTheme.spaceMD),
+          decoration: BoxDecoration(
+            border: Border.all(color: AppTheme.borderLight, width: 0.5),
+            borderRadius: BorderRadius.circular(AppTheme.radiusLG),
+          ),
+          child: Row(
+            children: [
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: _dotBg,
+                  shape: BoxShape.circle,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Icon(Icons.local_fire_department,
+                      size: 16, color: _dotColor),
+                ),
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Icon(Icons.local_fire_department,
-                    size: 16, color: _dotColor),
+              const SizedBox(width: AppTheme.spaceMD),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(report.title,
+                        style: tt.labelLarge,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 2),
+                    Text(report.location,
+                        style: tt.bodySmall!
+                            .copyWith(color: AppTheme.textSecondary),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis),
+                  ],
+                ),
               ),
-            ),
-            const SizedBox(width: AppTheme.spaceMD),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(report.title,
-                      style: tt.labelLarge,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
-                  const SizedBox(height: 2),
-                  Text(report.location,
-                      style: tt.bodySmall!
-                          .copyWith(color: AppTheme.textSecondary),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
-                ],
-              ),
-            ),
-            const SizedBox(width: AppTheme.spaceSM),
-            Text(report.displayTimeAgo,
-                style: tt.bodySmall!.copyWith(color: AppTheme.textHint)),
-          ],
+              const SizedBox(width: AppTheme.spaceSM),
+              Text(report.displayTimeAgo,
+                  style: tt.bodySmall!.copyWith(color: AppTheme.textHint)),
+            ],
+          ),
         ),
       ),
     );
