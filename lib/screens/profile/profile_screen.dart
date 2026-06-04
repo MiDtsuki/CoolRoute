@@ -778,6 +778,8 @@ class _MyContributions extends StatelessWidget {
           labelOf: (s) => s.name,
           sublabelOf: (s) => s.displayCategory,
           timeOf: (_) => '',
+          canEdit: true,
+          onEdit: (s, ctx) => _showEditCoolSpot(ctx, s),
           onDelete: (s) async {
             await CoolSpotService().deleteCoolSpot(s.id);
             notifyCoolSpotsChanged();
@@ -791,6 +793,8 @@ class _MyContributions extends StatelessWidget {
           labelOf: (t) => t.title,
           sublabelOf: (t) => t.locationName,
           timeOf: (t) => t.datePlanted,
+          canEdit: true,
+          onEdit: (t, ctx) => _showEditTreeEvent(ctx, t),
           onDelete: (t) async {
             await TreeEventService().deleteTreeEvent(t.id);
             notifyTreeEventsChanged();
@@ -807,6 +811,24 @@ class _MyContributions extends StatelessWidget {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (_) => _EditReportSheet(report: report),
+    );
+  }
+
+  static Future<void> _showEditCoolSpot(BuildContext ctx, CoolSpot spot) async {
+    await showModalBottomSheet<void>(
+      context: ctx,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _EditCoolSpotSheet(spot: spot),
+    );
+  }
+
+  static Future<void> _showEditTreeEvent(BuildContext ctx, TreePin event) async {
+    await showModalBottomSheet<void>(
+      context: ctx,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _EditTreeEventSheet(event: event),
     );
   }
 }
@@ -1016,6 +1038,250 @@ class _ContribRow extends StatelessWidget {
 }
 
 // ── Edit report bottom sheet ──────────────────────────────────────────────────
+
+class _EditCoolSpotSheet extends StatefulWidget {
+  const _EditCoolSpotSheet({required this.spot});
+  final CoolSpot spot;
+
+  @override
+  State<_EditCoolSpotSheet> createState() => _EditCoolSpotSheetState();
+}
+
+class _EditCoolSpotSheetState extends State<_EditCoolSpotSheet> {
+  late final TextEditingController _name =
+      TextEditingController(text: widget.spot.name);
+  late final TextEditingController _category =
+      TextEditingController(text: widget.spot.category);
+  late final TextEditingController _amenity =
+      TextEditingController(text: widget.spot.amenity);
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _category.dispose();
+    _amenity.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_name.text.trim().isEmpty) return;
+    setState(() => _saving = true);
+    try {
+      await CoolSpotService().updateCoolSpot(
+        widget.spot.id,
+        name: _name.text.trim(),
+        category: _category.text.trim(),
+        amenity: _amenity.text.trim(),
+      );
+      notifyCoolSpotsChanged();
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      if (mounted) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Could not save: $e')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _EditSheetScaffold(
+      title: 'Edit cool spot',
+      saving: _saving,
+      onSave: _save,
+      fields: [
+        TextFormField(
+          controller: _name,
+          decoration: const InputDecoration(labelText: 'Name'),
+        ),
+        const SizedBox(height: AppTheme.spaceSM),
+        TextFormField(
+          controller: _category,
+          decoration: const InputDecoration(labelText: 'Category'),
+        ),
+        const SizedBox(height: AppTheme.spaceSM),
+        TextFormField(
+          controller: _amenity,
+          minLines: 2,
+          maxLines: 4,
+          decoration: const InputDecoration(labelText: 'What it offers'),
+        ),
+      ],
+    );
+  }
+}
+
+class _EditTreeEventSheet extends StatefulWidget {
+  const _EditTreeEventSheet({required this.event});
+  final TreePin event;
+
+  @override
+  State<_EditTreeEventSheet> createState() => _EditTreeEventSheetState();
+}
+
+class _EditTreeEventSheetState extends State<_EditTreeEventSheet> {
+  late final TextEditingController _title =
+      TextEditingController(text: widget.event.title);
+  late final TextEditingController _location =
+      TextEditingController(text: widget.event.locationName);
+  late final TextEditingController _when =
+      TextEditingController(text: widget.event.datePlanted);
+  late final TextEditingController _goal =
+      TextEditingController(text: widget.event.goalTrees > 0 ? '${widget.event.goalTrees}' : '');
+  late final TextEditingController _description =
+      TextEditingController(text: widget.event.description);
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _location.dispose();
+    _when.dispose();
+    _goal.dispose();
+    _description.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_title.text.trim().isEmpty) return;
+    setState(() => _saving = true);
+    try {
+      await TreeEventService().updateTreeEvent(
+        widget.event.id,
+        title: _title.text.trim(),
+        locationName: _location.text.trim(),
+        when: _when.text.trim(),
+        description: _description.text.trim(),
+        goalTrees: int.tryParse(_goal.text.trim()) ?? 0,
+      );
+      notifyTreeEventsChanged();
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      if (mounted) {
+        setState(() => _saving = false);
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Could not save: $e')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _EditSheetScaffold(
+      title: 'Edit tree event',
+      saving: _saving,
+      onSave: _save,
+      fields: [
+        TextFormField(
+          controller: _title,
+          decoration: const InputDecoration(labelText: 'Event title'),
+        ),
+        const SizedBox(height: AppTheme.spaceSM),
+        TextFormField(
+          controller: _location,
+          decoration: const InputDecoration(labelText: 'Location name'),
+        ),
+        const SizedBox(height: AppTheme.spaceSM),
+        Row(
+          children: [
+            Expanded(
+              flex: 2,
+              child: TextFormField(
+                controller: _when,
+                decoration: const InputDecoration(labelText: 'When'),
+              ),
+            ),
+            const SizedBox(width: AppTheme.spaceSM),
+            Expanded(
+              child: TextFormField(
+                controller: _goal,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Goal 🌳'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AppTheme.spaceSM),
+        TextFormField(
+          controller: _description,
+          minLines: 3,
+          maxLines: 5,
+          decoration: const InputDecoration(labelText: 'Description'),
+        ),
+      ],
+    );
+  }
+}
+
+/// Shared modal scaffold for the edit sheets (grab handle, title, fields, save).
+class _EditSheetScaffold extends StatelessWidget {
+  const _EditSheetScaffold({
+    required this.title,
+    required this.saving,
+    required this.onSave,
+    required this.fields,
+  });
+
+  final String title;
+  final bool saving;
+  final VoidCallback onSave;
+  final List<Widget> fields;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    return Container(
+      decoration: const BoxDecoration(
+        color: AppTheme.bgCard,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(
+              AppTheme.spaceMD, 10, AppTheme.spaceMD, AppTheme.spaceLG),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: AppTheme.borderMid,
+                    borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+                  ),
+                  child: const SizedBox(width: 32, height: 4),
+                ),
+              ),
+              const SizedBox(height: AppTheme.spaceMD),
+              Text(title, style: tt.headlineMedium),
+              const SizedBox(height: AppTheme.spaceMD),
+              ...fields,
+              const SizedBox(height: AppTheme.spaceLG),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  onPressed: saving ? null : onSave,
+                  child: saving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: AppTheme.textOnDark),
+                        )
+                      : const Text('Save changes'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class _EditReportSheet extends StatefulWidget {
   const _EditReportSheet({required this.report});

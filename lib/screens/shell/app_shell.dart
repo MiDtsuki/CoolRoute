@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/hot_zone_report.dart';
 import '../../theme/app_theme.dart';
 import '../data/environmental_data_screen.dart';
 import '../home/home_screen.dart';
@@ -18,11 +19,24 @@ class _AppShellState extends State<AppShell> {
   int _index = 0;
   int _mapVersion = 0;
   bool _openTreesFilter = false;
+  HotZoneReport? _focusZone;
 
-  void _goToMapCoolSpots() => setState(() => _index = 2);
+  void _goToMapCoolSpots() => setState(() {
+        _index = 2;
+        _focusZone = null;
+      });
   void _goToMapTrees() => setState(() {
         _index = 2;
         _openTreesFilter = true;
+        _focusZone = null;
+        _mapVersion++;
+      });
+
+  // From a Home recent-alert tap: open the Map focused on that hot zone.
+  void _goToMapHotZone(HotZoneReport zone) => setState(() {
+        _index = 2;
+        _openTreesFilter = false;
+        _focusZone = zone;
         _mapVersion++;
       });
 
@@ -35,11 +49,16 @@ class _AppShellState extends State<AppShell> {
     final body = IndexedStack(
       index: _index,
       children: [
-        HomeScreen(onFindCoolSpot: _goToMapCoolSpots, onPlantTree: _goToMapTrees),
+        HomeScreen(
+          onFindCoolSpot: _goToMapCoolSpots,
+          onPlantTree: _goToMapTrees,
+          onShowHotZone: _goToMapHotZone,
+        ),
         const RouteScreen(),
         MapScreen(
           key: ValueKey('map-$_mapVersion-$_openTreesFilter'),
           initialTreesSelected: _openTreesFilter,
+          initialFocusZone: _focusZone,
         ),
         const EnvironmentalDataScreen(),
         const ProfileScreen(),

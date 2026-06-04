@@ -26,9 +26,16 @@ import '../../widgets/map_location_picker.dart';
 import '../../widgets/report_spot_sheet.dart';
 
 class MapScreen extends StatefulWidget {
-  const MapScreen({super.key, this.initialTreesSelected = false});
+  const MapScreen({
+    super.key,
+    this.initialTreesSelected = false,
+    this.initialFocusZone,
+  });
 
   final bool initialTreesSelected;
+
+  /// When set (e.g. tapping a Home alert), the map opens focused on this zone.
+  final HotZoneReport? initialFocusZone;
 
   @override
   State<MapScreen> createState() => _MapScreenState();
@@ -48,6 +55,11 @@ class _MapScreenState extends State<MapScreen> {
   // user drags the handle, then held in absolute pixels (clamped per build).
   double? _listSheetHeight;
   bool _draggingList = false;
+
+  // Max height the draggable list sheet may grow to — set each build from the
+  // actual available (SafeArea) height so the sheet/handle never slides off the
+  // top of the screen.
+  double _maxListH = 400;
 
   // Collapsed peek height — leaves just the drag handle + title bar so the
   // sheet can drag almost all the way down yet still be grabbed to reopen.
@@ -186,6 +198,14 @@ class _MapScreenState extends State<MapScreen> {
     hotZoneRevision.addListener(_loadHotZones);
     coolSpotRevision.addListener(_reloadCoolSpots);
     treeEventRevision.addListener(_loadTreeEvents);
+    // Opened focused on a specific zone (e.g. from a Home alert) — select it and
+    // zoom once the first frame (and map controller) is ready.
+    final focus = widget.initialFocusZone;
+    if (focus != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _onZoneView(focus);
+      });
+    }
   }
 
   // Loads community hot-zone reports from Firestore (with a dummy fallback baked
@@ -637,13 +657,12 @@ class _MapScreenState extends State<MapScreen> {
 
   // Drag the list sheet's handle up/down to resize it (dragging up grows it).
   void _onListSheetDrag(DragUpdateDetails details) {
-    final screenH = MediaQuery.sizeOf(context).height;
-    final current = _listSheetHeight ?? screenH * 0.48;
+    final current = _listSheetHeight ?? _maxListH * 0.6;
     setState(() {
       _draggingList = true;
       _listSheetHeight = (current - details.delta.dy).clamp(
         _listSheetMinHeight,
-        screenH * 0.85,
+        _maxListH,
       );
     });
   }
@@ -672,12 +691,6 @@ class _MapScreenState extends State<MapScreen> {
     final isWide = MediaQuery.sizeOf(context).width > 800;
     final screenH = MediaQuery.sizeOf(context).height;
     final sheetH = screenH * 0.65;
-    final spotPanelH = screenH * 0.48;
-    // Current (possibly drag-adjusted) height of the nearby-list sheets.
-    final listH = (_listSheetHeight ?? spotPanelH).clamp(
-      _listSheetMinHeight,
-      screenH * 0.85,
-    );
     // Skip the slide animation on the FABs while actively dragging the sheet,
     // so they track the handle instantly instead of lagging behind.
     final listAnimDuration = _draggingList
@@ -817,11 +830,18 @@ class _MapScreenState extends State<MapScreen> {
     }
 
     // ── Mobile layout ─────────────────────────────────────────────────────────
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        mapStack,
-        // Hot zone sheet
+    return LayoutBuilder(builder: (context, constraints) {
+      final availH = constraints.maxHeight;
+      // Reserve space at the top for the search bar + mode toggle + filter chips
+      // so the sheet (and the FABs that track it) never slide off-screen.
+      _maxListH = (availH - 168.0).clamp(220.0, availH);
+      final listH = (_listSheetHeight ?? availH * 0.45)
+          .clamp(_listSheetMinHeight, _maxListH);
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          mapStack,
+          // Hot zone sheet
         AnimatedPositioned(
           duration: const Duration(milliseconds: 300),
           curve: Curves.easeOutCubic,
@@ -943,8 +963,9 @@ class _MapScreenState extends State<MapScreen> {
               : AppTheme.spaceLG,
           child: _LocateFab(onPressed: _recenter, busy: _locating),
         ),
-      ],
-    );
+        ],
+      );
+    });
   }
 }
 

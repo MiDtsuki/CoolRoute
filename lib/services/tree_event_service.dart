@@ -78,6 +78,23 @@ class TreeEventService {
   Future<void> deleteTreeEvent(String id) =>
       _db.collection('treeEvents').doc(id).delete();
 
+  /// Updates editable fields on a tree event the current user owns.
+  Future<void> updateTreeEvent(
+    String id, {
+    required String title,
+    required String locationName,
+    required String when,
+    required String description,
+    required int goalTrees,
+  }) =>
+      _db.collection('treeEvents').doc(id).update({
+        'title': title,
+        'locationName': locationName,
+        'datePlanted': when,
+        'description': description,
+        'goalTrees': goalTrees,
+      });
+
   /// Records a contribution by [userId] to [eventId], enforcing **one per user
   /// per action** via a transaction. Returns `true` if newly added, `false` if
   /// the user already contributed that way (or the event no longer exists).

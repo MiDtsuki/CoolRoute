@@ -41,13 +41,13 @@ CoolRoute is a **fully wired, live-data app**. Every core feature is implemented
 - [x] Community suggestion form persists to Firestore `coolSpots`
 - [x] Map filter (Water / Shade / Air-conditioned / Open Now)
 - [x] 48-hour auto-expiry on community-submitted spots
-- [x] Owner delete from Profile → My Contributions
+- [x] Owner delete + **edit** from Profile → My Contributions
 
 ### Tree-Planting Events
 - [x] Create event via Map → Report → "Start a Tree-Planting Event"; real Google-map location picker
 - [x] RSVP / Water / Donate / Attend — one per user per action, transaction-enforced
 - [x] Live refresh on create; live count updates on contribution
-- [x] Owner delete from Profile → My Contributions
+- [x] Owner delete + **edit** from Profile → My Contributions
 
 ### Heat-Safe Routing (headline feature)
 - [x] Browser / device location via `geolocator` (web-safe; falls back to Bangkok center with amber warning label)
@@ -78,6 +78,8 @@ CoolRoute is a **fully wired, live-data app**. Every core feature is implemented
 - [x] Custom teardrop pins rendered via `dart:ui` — colored by risk / type, icon per category (fire 🔥, water 💧, shade 🌳, AC ❄️, tree 🌳)
 - [x] Hot zones, cool spots, and tree events each have distinct pin styles
 - [x] Falls back to standard hued pins while custom bitmaps are loading
+- [x] Draggable "nearby" sheet bounded to the screen (can't be dragged off-top); Locate + Report FABs track the sheet, not the tab bar
+- [x] Home "Recent alerts" chips open the Map focused on that hot zone
 
 ### Timestamps
 - [x] `createdAt` stored as Firestore `serverTimestamp()` on every new report, cool spot, tree event
@@ -97,7 +99,7 @@ CoolRoute is a **fully wired, live-data app**. Every core feature is implemented
 
 | Step | Command / Where |
 |---|---|
-| **Deploy Firestore rules** | `firebase deploy --only firestore:rules --config backend/firebase.json` |
+| **Deploy Firestore rules** (re-deploy — added cool-spot/tree-event owner-edit) | `cd backend && firebase deploy --only "firestore:rules"` |
 | **Enable Email/Password auth** | Firebase console → Authentication → Sign-in method → Email/Password → Enable |
 | **Enable Google auth** | Firebase console → Authentication → Sign-in method → Google → Enable |
 | **Firestore composite indexes** | Already building — confirm all 3 show "Enabled" in console (hotZones / coolSpots / treeEvents on `userId` + `createdAt`) |
@@ -109,8 +111,8 @@ CoolRoute is a **fully wired, live-data app**. Every core feature is implemented
 | Collection | Read | Create | Update | Delete |
 |---|---|---|---|---|
 | `hotZones` | public | authed, requires `title`+`location`+`risk`+`createdAt` | authed: `verifications`/`verifiedBy`/`resolvedBy` OR owner edits `title`/`description`/`category` | owner OR `resolvedBy.size() >= 3` |
-| `coolSpots` | public | authed, requires `name`+`type`+`createdAt` | authed: `verifiedBy` only | owner |
-| `treeEvents` | public | authed, requires `title`+`createdAt` | authed: `rsvpBy`/`waterBy`/`donateBy`/`attendBy` | owner |
+| `coolSpots` | public | authed, requires `name`+`type`+`createdAt` | authed: `verifiedBy` OR owner edits `name`/`category`/`amenity` | owner |
+| `treeEvents` | public | authed, requires `title`+`createdAt` | authed: `rsvpBy`/`waterBy`/`donateBy`/`attendBy` OR owner edits `title`/`locationName`/`datePlanted`/`description`/`goalTrees` | owner |
 | `users/{uid}` | owner | owner | owner | owner |
 
 ---

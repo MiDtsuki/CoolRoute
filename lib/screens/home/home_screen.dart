@@ -11,10 +11,18 @@ import '../reports/create_hot_zone_report_screen.dart';
 import '../route/route_screen.dart';
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, this.onFindCoolSpot, this.onPlantTree});
+  const HomeScreen({
+    super.key,
+    this.onFindCoolSpot,
+    this.onPlantTree,
+    this.onShowHotZone,
+  });
 
   final VoidCallback? onFindCoolSpot;
   final VoidCallback? onPlantTree;
+
+  /// Opens the Map focused on the given hot zone (from a recent-alert tap).
+  final ValueChanged<HotZoneReport>? onShowHotZone;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -211,7 +219,12 @@ class _HomeScreenState extends State<HomeScreen> {
               padding: const EdgeInsets.symmetric(horizontal: AppTheme.spaceMD),
               itemCount: recentZones.length,
               separatorBuilder: (_, _) => const SizedBox(width: AppTheme.spaceSM),
-              itemBuilder: (_, i) => _AlertChip(report: recentZones[i]),
+              itemBuilder: (_, i) => _AlertChip(
+                report: recentZones[i],
+                onTap: widget.onShowHotZone == null
+                    ? null
+                    : () => widget.onShowHotZone!(recentZones[i]),
+              ),
             ),
           ),
           const SizedBox(height: AppTheme.spaceLG),
@@ -467,9 +480,10 @@ class _AlertCard extends StatelessWidget {
 // ── Alert chip ───────────────────────────────────────────────────────────────
 
 class _AlertChip extends StatelessWidget {
-  const _AlertChip({required this.report});
+  const _AlertChip({required this.report, this.onTap});
 
   final HotZoneReport report;
+  final VoidCallback? onTap;
 
   Color get _dotColor => switch (report.risk) {
         HeatRisk.extreme || HeatRisk.high => AppTheme.riskExtreme,
@@ -480,28 +494,32 @@ class _AlertChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: AppTheme.bgCard,
-        borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-        border: Border.all(color: AppTheme.borderLight, width: 0.5),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(
-            horizontal: AppTheme.spaceMD, vertical: AppTheme.spaceXS + 2),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            DecoratedBox(
-              decoration: BoxDecoration(color: _dotColor, shape: BoxShape.circle),
-              child: const SizedBox(width: 8, height: 8),
-            ),
-            const SizedBox(width: 6),
-            Text(report.location, style: tt.labelMedium),
-            const SizedBox(width: 6),
-            Text(report.displayTimeAgo,
-                style: tt.bodySmall!.copyWith(color: AppTheme.textHint)),
-          ],
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: AppTheme.bgCard,
+          borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+          border: Border.all(color: AppTheme.borderLight, width: 0.5),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+              horizontal: AppTheme.spaceMD, vertical: AppTheme.spaceXS + 2),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DecoratedBox(
+                decoration: BoxDecoration(color: _dotColor, shape: BoxShape.circle),
+                child: const SizedBox(width: 8, height: 8),
+              ),
+              const SizedBox(width: 6),
+              Text(report.location, style: tt.labelMedium),
+              const SizedBox(width: 6),
+              Text(report.displayTimeAgo,
+                  style: tt.bodySmall!.copyWith(color: AppTheme.textHint)),
+            ],
+          ),
         ),
       ),
     );

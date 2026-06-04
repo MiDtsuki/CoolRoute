@@ -92,4 +92,17 @@ class CoolSpotService {
   /// Deletes a community cool spot the current user owns.
   Future<void> deleteCoolSpot(String id) =>
       _db.collection('coolSpots').doc(id).delete();
+
+  /// Updates editable fields on a cool spot the current user owns.
+  Future<void> updateCoolSpot(
+    String id, {
+    required String name,
+    required String category,
+    required String amenity,
+  }) =>
+      _db.collection('coolSpots').doc(id).update({
+        'name': name,
+        'category': category,
+        'amenity': amenity,
+      });
 }
