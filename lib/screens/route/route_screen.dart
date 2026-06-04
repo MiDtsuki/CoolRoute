@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:pointer_interceptor/pointer_interceptor.dart';
 
 import '../../models/heat_risk.dart';
 import '../../models/hot_zone_report.dart';
@@ -213,14 +214,18 @@ class _RouteScreenState extends State<RouteScreen> {
           top: AppTheme.spaceSM,
           left: AppTheme.spaceSM,
           right: AppTheme.spaceSM,
-          child: _DirectionsBar(state: this, elevated: true),
+          child: PointerInterceptor(
+            child: _DirectionsBar(state: this, elevated: true),
+          ),
         ),
         if (_destination != null)
           Positioned(
             left: AppTheme.spaceSM,
             right: AppTheme.spaceSM,
             bottom: AppTheme.spaceSM,
-            child: _RoutePanel(state: this, asSheet: true),
+            child: PointerInterceptor(
+              child: _RoutePanel(state: this, asSheet: true),
+            ),
           ),
       ],
     );

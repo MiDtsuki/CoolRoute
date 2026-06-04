@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:pointer_interceptor/pointer_interceptor.dart';
 
 import '../../data/dummy_tree_pins.dart';
 import '../../dummy_data/dummy_data.dart';
@@ -42,6 +43,15 @@ class _MapScreenState extends State<MapScreen> {
   bool _locating = false;
   int _recenterTick = 0;
   late String _activeFilter;
+
+  // User-adjustable height of the "nearby" list bottom sheets. Null until the
+  // user drags the handle, then held in absolute pixels (clamped per build).
+  double? _listSheetHeight;
+  bool _draggingList = false;
+
+  // Collapsed peek height — leaves just the drag handle + title bar so the
+  // sheet can drag almost all the way down yet still be grabbed to reopen.
+  static const double _listSheetMinHeight = 72;
 
   // Real, location-based cool spots. Seeded with local data so the screen has
   // content immediately; replaced with live OpenStreetMap results once the
@@ -94,9 +104,10 @@ class _MapScreenState extends State<MapScreen> {
         'Water' => s.type == 'Water',
         'Shade' => s.type == 'Shade',
         'Air-conditioned' => s.type == 'Air-conditioned',
-        'Open Now' => s.openStatus == 'Open' ||
-            s.openStatus == 'Working' ||
-            s.openStatus == 'Available',
+        'Open Now' =>
+          s.openStatus == 'Open' ||
+              s.openStatus == 'Working' ||
+              s.openStatus == 'Available',
         _ => true,
       };
       return passesFilter &&
@@ -117,8 +128,7 @@ class _MapScreenState extends State<MapScreen> {
         'Verified' => z.verifications >= 10,
         _ => true,
       };
-      return passesFilter &&
-          _matchesQuery([z.title, z.location, z.category]);
+      return passesFilter && _matchesQuery([z.title, z.location, z.category]);
     }).toList();
   }
 
@@ -203,17 +213,23 @@ class _MapScreenState extends State<MapScreen> {
     }
 
     // Optimistic: bump count + record self in verifiedBy so the buttons disable.
-    setState(() => replace(zone.copyWith(
+    setState(
+      () => replace(
+        zone.copyWith(
           verifications: zone.verifications + 1,
           verifiedBy: [...zone.verifiedBy, uid],
-        )));
+        ),
+      ),
+    );
 
     try {
       final counted = await ReportService().verifyReport(zone.id, uid);
       if (counted) {
         await UserProfileService().incrementVerifiedReportCount(uid);
         messenger.showSnackBar(
-          const SnackBar(content: Text('Thanks — your verification was recorded.')),
+          const SnackBar(
+            content: Text('Thanks — your verification was recorded.'),
+          ),
         );
       } else {
         // Already verified server-side, or the report isn't persisted yet
@@ -222,7 +238,8 @@ class _MapScreenState extends State<MapScreen> {
         messenger.showSnackBar(
           const SnackBar(
             content: Text(
-                "You already verified this, or it isn't saved yet — refresh and try again."),
+              "You already verified this, or it isn't saved yet — refresh and try again.",
+            ),
           ),
         );
       }
@@ -230,7 +247,9 @@ class _MapScreenState extends State<MapScreen> {
       setState(() => replace(zone));
       debugPrint('VERIFY: verify error: $e');
       messenger.showSnackBar(
-        const SnackBar(content: Text('Could not record verification. Try again.')),
+        const SnackBar(
+          content: Text('Could not record verification. Try again.'),
+        ),
       );
     }
   }
@@ -302,15 +321,19 @@ class _MapScreenState extends State<MapScreen> {
       final all = await CoolSpotService().getCoolSpots();
       return all.where((s) => s.hasLatLng).map((s) {
         final meters = Geolocator.distanceBetween(lat, lng, s.lat!, s.lng!);
-        return s.copyWith(distanceMeters: meters, distance: _formatDistance(meters));
+        return s.copyWith(
+          distanceMeters: meters,
+          distance: _formatDistance(meters),
+        );
       }).toList();
     } catch (_) {
       return const [];
     }
   }
 
-  static String _formatDistance(double meters) =>
-      meters < 1000 ? '${meters.round()} m' : '${(meters / 1000).toStringAsFixed(1)} km';
+  static String _formatDistance(double meters) => meters < 1000
+      ? '${meters.round()} m'
+      : '${(meters / 1000).toStringAsFixed(1)} km';
 
   @override
   void dispose() {
@@ -365,9 +388,9 @@ class _MapScreenState extends State<MapScreen> {
   }
 
   void _zoomTo(LatLng point) => setState(() {
-        _focusLatLng = point;
-        _focusTick++;
-      });
+    _focusLatLng = point;
+    _focusTick++;
+  });
 
   void _onZoneView(HotZoneReport zone) {
     setState(() => _selectedZone = zone);
@@ -394,8 +417,7 @@ class _MapScreenState extends State<MapScreen> {
     if (zone.hasLatLng) _zoomTo(LatLng(zone.lat!, zone.lng!));
   }
 
-  LatLng get _reportAnchor =>
-      _userLocation ?? const LatLng(13.7563, 100.5018);
+  LatLng get _reportAnchor => _userLocation ?? const LatLng(13.7563, 100.5018);
 
   void _openReportSheet() {
     showModalBottomSheet<void>(
@@ -443,6 +465,22 @@ class _MapScreenState extends State<MapScreen> {
     _activeFilter = 'All';
   });
 
+  // Drag the list sheet's handle up/down to resize it (dragging up grows it).
+  void _onListSheetDrag(DragUpdateDetails details) {
+    final screenH = MediaQuery.sizeOf(context).height;
+    final current = _listSheetHeight ?? screenH * 0.48;
+    setState(() {
+      _draggingList = true;
+      _listSheetHeight = (current - details.delta.dy).clamp(
+        _listSheetMinHeight,
+        screenH * 0.85,
+      );
+    });
+  }
+
+  void _onListSheetDragEnd(DragEndDetails details) =>
+      setState(() => _draggingList = false);
+
   void _showSpotDetail(CoolSpot spot) {
     // Center/highlight the spot on the map.
     setState(() => _focusedSpot = spot);
@@ -465,8 +503,20 @@ class _MapScreenState extends State<MapScreen> {
     final screenH = MediaQuery.sizeOf(context).height;
     final sheetH = screenH * 0.65;
     final spotPanelH = screenH * 0.48;
+    // Current (possibly drag-adjusted) height of the nearby-list sheets.
+    final listH = (_listSheetHeight ?? spotPanelH).clamp(
+      _listSheetMinHeight,
+      screenH * 0.85,
+    );
+    // Skip the slide animation on the FABs while actively dragging the sheet,
+    // so they track the handle instantly instead of lagging behind.
+    final listAnimDuration = _draggingList
+        ? Duration.zero
+        : const Duration(milliseconds: 300);
     final zonesListVisible =
         !_coolSpotsMode && _selectedZone == null && _selectedTree == null;
+    final hotZoneSheetVisible = !_coolSpotsMode && _selectedZone != null;
+    final treeSheetVisible = !_coolSpotsMode && _selectedTree != null;
 
     final mapWidget = CoolRouteMap(
       hotZones: _coolSpotsMode ? const [] : _visibleZones,
@@ -606,15 +656,18 @@ class _MapScreenState extends State<MapScreen> {
           bottom: (!_coolSpotsMode && _selectedZone != null)
               ? 0
               : -(sheetH + 32),
-          child: IgnorePointer(
-            ignoring: _coolSpotsMode || _selectedZone == null,
-            child: HotZoneBottomSheet(
-              report: _selectedZone ?? DummyData.hotZones.first,
-              nearbyReports: _nearby,
-              onClose: _onDismiss,
-              onVerify: _onVerifyZone,
-              alreadyVerified:
-                  (_selectedZone ?? DummyData.hotZones.first).isVerifiedBy(_currentUid()),
+          child: PointerInterceptor(
+            intercepting: hotZoneSheetVisible,
+            child: IgnorePointer(
+              ignoring: !hotZoneSheetVisible,
+              child: HotZoneBottomSheet(
+                report: _selectedZone ?? DummyData.hotZones.first,
+                nearbyReports: _nearby,
+                onClose: _onDismiss,
+                onVerify: _onVerifyZone,
+                alreadyVerified: (_selectedZone ?? DummyData.hotZones.first)
+                    .isVerifiedBy(_currentUid()),
+              ),
             ),
           ),
         ),
@@ -626,11 +679,14 @@ class _MapScreenState extends State<MapScreen> {
           bottom: (!_coolSpotsMode && _selectedTree != null)
               ? 0
               : -(sheetH + 32),
-          child: IgnorePointer(
-            ignoring: _coolSpotsMode || _selectedTree == null,
-            child: _TreePinBottomSheet(
-              pin: _selectedTree ?? DummyTreePins.pins.first,
-              onClose: _onDismiss,
+          child: PointerInterceptor(
+            intercepting: treeSheetVisible,
+            child: IgnorePointer(
+              ignoring: !treeSheetVisible,
+              child: _TreePinBottomSheet(
+                pin: _selectedTree ?? DummyTreePins.pins.first,
+                onClose: _onDismiss,
+              ),
             ),
           ),
         ),
@@ -640,14 +696,19 @@ class _MapScreenState extends State<MapScreen> {
           curve: Curves.easeOutCubic,
           left: 0,
           right: 0,
-          bottom: _coolSpotsMode ? 0 : -(spotPanelH + 32),
-          child: IgnorePointer(
-            ignoring: !_coolSpotsMode,
-            child: _CoolSpotsListPanel(
-              maxHeight: spotPanelH,
-              spots: _visibleSpots,
-              loading: _loadingSpots,
-              onSpotView: _showSpotDetail,
+          bottom: _coolSpotsMode ? 0 : -(listH + 32),
+          child: PointerInterceptor(
+            intercepting: _coolSpotsMode,
+            child: IgnorePointer(
+              ignoring: !_coolSpotsMode,
+              child: _CoolSpotsListPanel(
+                maxHeight: listH,
+                spots: _visibleSpots,
+                loading: _loadingSpots,
+                onSpotView: _showSpotDetail,
+                onDrag: _onListSheetDrag,
+                onDragEnd: _onListSheetDragEnd,
+              ),
             ),
           ),
         ),
@@ -657,45 +718,50 @@ class _MapScreenState extends State<MapScreen> {
           curve: Curves.easeOutCubic,
           left: 0,
           right: 0,
-          bottom: zonesListVisible ? 0 : -(spotPanelH + 32),
-          child: IgnorePointer(
-            ignoring: !zonesListVisible,
-            child: _ZonesListPanel(
-              maxHeight: spotPanelH,
-              zones: _visibleZones,
-              trees: _visibleTrees,
-              showTrees: _showTrees,
-              userLocation: _userLocation,
-              onZoneView: _onZoneView,
-              onTreeView: _onTreeTap,
+          bottom: zonesListVisible ? 0 : -(listH + 32),
+          child: PointerInterceptor(
+            intercepting: zonesListVisible,
+            child: IgnorePointer(
+              ignoring: !zonesListVisible,
+              child: _ZonesListPanel(
+                maxHeight: listH,
+                zones: _visibleZones,
+                trees: _visibleTrees,
+                showTrees: _showTrees,
+                userLocation: _userLocation,
+                onZoneView: _onZoneView,
+                onTreeView: _onTreeTap,
+                onDrag: _onListSheetDrag,
+                onDragEnd: _onListSheetDragEnd,
+              ),
             ),
           ),
         ),
         // Report FAB — hidden in cool spots mode
         if (!_coolSpotsMode)
           AnimatedPositioned(
-            duration: const Duration(milliseconds: 300),
+            duration: listAnimDuration,
             curve: Curves.easeOutCubic,
             right: AppTheme.spaceMD,
             bottom: (_selectedZone != null || _selectedTree != null)
                 ? sheetH + AppTheme.spaceMD
                 : zonesListVisible
-                    ? spotPanelH + AppTheme.spaceMD
-                    : AppTheme.spaceLG,
+                ? listH + AppTheme.spaceMD
+                : AppTheme.spaceLG,
             child: _MapActionButtons(onReport: _openReportSheet),
           ),
         // Locate button — always available, on the opposite side of the FAB.
         AnimatedPositioned(
-          duration: const Duration(milliseconds: 300),
+          duration: listAnimDuration,
           curve: Curves.easeOutCubic,
           left: AppTheme.spaceMD,
           bottom: _coolSpotsMode
-              ? spotPanelH + AppTheme.spaceMD
+              ? listH + AppTheme.spaceMD
               : (_selectedZone != null || _selectedTree != null)
-                  ? sheetH + AppTheme.spaceMD
-                  : zonesListVisible
-                      ? spotPanelH + AppTheme.spaceMD
-                      : AppTheme.spaceLG,
+              ? sheetH + AppTheme.spaceMD
+              : zonesListVisible
+              ? listH + AppTheme.spaceMD
+              : AppTheme.spaceLG,
           child: _LocateFab(onPressed: _recenter, busy: _locating),
         ),
       ],
@@ -828,18 +894,38 @@ class _ToggleOption extends StatelessWidget {
 
 // ── Cool spots list panel (mobile bottom sheet) ───────────────────────────────
 
+// The grab handle shown at the top of a draggable bottom sheet.
+class _DragHandle extends StatelessWidget {
+  const _DragHandle();
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppTheme.borderMid,
+        borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+      ),
+      child: const SizedBox(width: 32, height: 4),
+    );
+  }
+}
+
 class _CoolSpotsListPanel extends StatelessWidget {
   const _CoolSpotsListPanel({
     required this.maxHeight,
     required this.spots,
     required this.loading,
     required this.onSpotView,
+    this.onDrag,
+    this.onDragEnd,
   });
 
   final double maxHeight;
   final List<CoolSpot> spots;
   final bool loading;
   final ValueChanged<CoolSpot> onSpotView;
+  final GestureDragUpdateCallback? onDrag;
+  final GestureDragEndCallback? onDragEnd;
 
   @override
   Widget build(BuildContext context) {
@@ -857,28 +943,34 @@ class _CoolSpotsListPanel extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 10, bottom: 6),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: AppTheme.borderMid,
-                  borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-                ),
-                child: const SizedBox(width: 32, height: 4),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppTheme.spaceMD,
-                vertical: AppTheme.spaceXS,
-              ),
-              child: Row(
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onVerticalDragUpdate: onDrag,
+              onVerticalDragEnd: onDragEnd,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text('Cool spots nearby', style: tt.labelLarge),
-                  const Spacer(),
-                  Text(
-                    loading ? 'Finding…' : '${spots.length} found',
-                    style: tt.bodySmall!.copyWith(color: AppTheme.textHint),
+                  const Padding(
+                    padding: EdgeInsets.only(top: 10, bottom: 6),
+                    child: _DragHandle(),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppTheme.spaceMD,
+                      vertical: AppTheme.spaceXS,
+                    ),
+                    child: Row(
+                      children: [
+                        Text('Cool spots nearby', style: tt.labelLarge),
+                        const Spacer(),
+                        Text(
+                          loading ? 'Finding…' : '${spots.length} found',
+                          style: tt.bodySmall!.copyWith(
+                            color: AppTheme.textHint,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -1004,9 +1096,9 @@ class _CoolSpotsList extends StatelessWidget {
           child: Text(
             'No cool spots match this filter nearby.',
             textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodySmall!.copyWith(
-                  color: AppTheme.textHint,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall!.copyWith(color: AppTheme.textHint),
           ),
         ),
       );
@@ -1050,90 +1142,108 @@ class _SpotDetailSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
-    return Container(
-      decoration: const BoxDecoration(
-        color: AppTheme.bgCard,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      padding: const EdgeInsets.fromLTRB(
-        AppTheme.spaceMD,
-        10,
-        AppTheme.spaceMD,
-        AppTheme.spaceLG,
-      ),
-      child: SafeArea(
-        top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Center(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: AppTheme.borderMid,
-                  borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-                ),
-                child: const SizedBox(width: 32, height: 4),
-              ),
-            ),
-            const SizedBox(height: AppTheme.spaceMD),
-            Row(
-              children: [
-                DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: _iconBg,
-                    shape: BoxShape.circle,
+    return PointerInterceptor(
+      child: Container(
+        decoration: const BoxDecoration(
+          color: AppTheme.bgCard,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.fromLTRB(
+          AppTheme.spaceMD,
+          10,
+          AppTheme.spaceMD,
+          AppTheme.spaceLG,
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Stack(
+                alignment: Alignment.center,
+                children: [
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: AppTheme.borderMid,
+                      borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+                    ),
+                    child: const SizedBox(width: 32, height: 4),
                   ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(AppTheme.spaceMD),
-                    child: Icon(_icon, color: _iconColor, size: 22),
-                  ),
-                ),
-                const SizedBox(width: AppTheme.spaceMD),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(spot.name, style: tt.headlineMedium),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${spot.displayCategory} · ${spot.distance} away',
-                        style: tt.bodySmall!.copyWith(
-                          color: AppTheme.textSecondary,
-                        ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: IconButton(
+                      icon: const Icon(Icons.close, size: 18),
+                      color: AppTheme.textHint,
+                      onPressed: () => Navigator.of(context).pop(),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(
+                        minWidth: 32,
+                        minHeight: 32,
                       ),
-                    ],
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppTheme.spaceMD),
-            Text(spot.amenity, style: tt.bodyMedium),
-            const SizedBox(height: AppTheme.spaceSM),
-            Row(
-              children: [
-                _StatusPill(spot.openStatus),
-                const SizedBox(width: AppTheme.spaceSM),
-                Expanded(
-                  child: Text(
-                    spot.verifiedBy > 0
-                        ? 'Verified by ${spot.verifiedBy} users'
-                        : 'Mapped on ${spot.source}',
-                    style: tt.bodySmall!.copyWith(color: AppTheme.textHint),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: AppTheme.spaceMD),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.directions_walk),
-                label: const Text('Use as cooling stop'),
+                ],
               ),
-            ),
-          ],
+              const SizedBox(height: AppTheme.spaceMD),
+              Row(
+                children: [
+                  DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: _iconBg,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppTheme.spaceMD),
+                      child: Icon(_icon, color: _iconColor, size: 22),
+                    ),
+                  ),
+                  const SizedBox(width: AppTheme.spaceMD),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(spot.name, style: tt.headlineMedium),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${spot.displayCategory} · ${spot.distance} away',
+                          style: tt.bodySmall!.copyWith(
+                            color: AppTheme.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppTheme.spaceMD),
+              Text(spot.amenity, style: tt.bodyMedium),
+              const SizedBox(height: AppTheme.spaceSM),
+              Row(
+                children: [
+                  _StatusPill(spot.openStatus),
+                  const SizedBox(width: AppTheme.spaceSM),
+                  Expanded(
+                    child: Text(
+                      spot.verifiedBy > 0
+                          ? 'Verified by ${spot.verifiedBy} users'
+                          : 'Mapped on ${spot.source}',
+                      style: tt.bodySmall!.copyWith(color: AppTheme.textHint),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: AppTheme.spaceMD),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.directions_walk),
+                  label: const Text('Use as cooling stop'),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -1146,20 +1256,20 @@ class _StatusPill extends StatelessWidget {
   final String status;
 
   Color get _bg => switch (status) {
-        'Open' || 'Working' => AppTheme.statusOpenBg,
-        'Available' => AppTheme.primaryLight,
-        'Closed' => AppTheme.statusClosedBg,
-        'Pending' => AppTheme.markerOrange.withValues(alpha: .14),
-        _ => AppTheme.statusOpenBg,
-      };
+    'Open' || 'Working' => AppTheme.statusOpenBg,
+    'Available' => AppTheme.primaryLight,
+    'Closed' => AppTheme.statusClosedBg,
+    'Pending' => AppTheme.markerOrange.withValues(alpha: .14),
+    _ => AppTheme.statusOpenBg,
+  };
 
   Color get _fg => switch (status) {
-        'Open' || 'Working' => AppTheme.statusOpen,
-        'Available' => AppTheme.primaryDark,
-        'Closed' => AppTheme.statusClosed,
-        'Pending' => AppTheme.markerOrange,
-        _ => AppTheme.statusOpen,
-      };
+    'Open' || 'Working' => AppTheme.statusOpen,
+    'Available' => AppTheme.primaryDark,
+    'Closed' => AppTheme.statusClosed,
+    'Pending' => AppTheme.markerOrange,
+    _ => AppTheme.statusOpen,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -1185,7 +1295,11 @@ String? _zoneDistanceText(HotZoneReport zone, LatLng? user) {
   if (user == null) return null;
   final eff = _zoneLatLngFrom(zone, user);
   final m = Geolocator.distanceBetween(
-      user.latitude, user.longitude, eff.latitude, eff.longitude);
+    user.latitude,
+    user.longitude,
+    eff.latitude,
+    eff.longitude,
+  );
   return m < 1000 ? '${m.round()} m' : '${(m / 1000).toStringAsFixed(1)} km';
 }
 
@@ -1210,6 +1324,8 @@ class _ZonesListPanel extends StatelessWidget {
     required this.userLocation,
     required this.onZoneView,
     required this.onTreeView,
+    this.onDrag,
+    this.onDragEnd,
   });
 
   final double maxHeight;
@@ -1219,6 +1335,8 @@ class _ZonesListPanel extends StatelessWidget {
   final LatLng? userLocation;
   final ValueChanged<HotZoneReport> onZoneView;
   final ValueChanged<TreePin> onTreeView;
+  final GestureDragUpdateCallback? onDrag;
+  final GestureDragEndCallback? onDragEnd;
 
   @override
   Widget build(BuildContext context) {
@@ -1237,28 +1355,38 @@ class _ZonesListPanel extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Padding(
-              padding: const EdgeInsets.only(top: 10, bottom: 6),
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: AppTheme.borderMid,
-                  borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-                ),
-                child: const SizedBox(width: 32, height: 4),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: AppTheme.spaceMD,
-                vertical: AppTheme.spaceXS,
-              ),
-              child: Row(
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onVerticalDragUpdate: onDrag,
+              onVerticalDragEnd: onDragEnd,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(showTrees ? 'Trees nearby' : 'Hot zones nearby',
-                      style: tt.labelLarge),
-                  const Spacer(),
-                  Text('$count found',
-                      style: tt.bodySmall!.copyWith(color: AppTheme.textHint)),
+                  const Padding(
+                    padding: EdgeInsets.only(top: 10, bottom: 6),
+                    child: _DragHandle(),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppTheme.spaceMD,
+                      vertical: AppTheme.spaceXS,
+                    ),
+                    child: Row(
+                      children: [
+                        Text(
+                          showTrees ? 'Trees nearby' : 'Hot zones nearby',
+                          style: tt.labelLarge,
+                        ),
+                        const Spacer(),
+                        Text(
+                          '$count found',
+                          style: tt.bodySmall!.copyWith(
+                            color: AppTheme.textHint,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -1330,11 +1458,15 @@ class _ZonesSidePanel extends StatelessWidget {
               ),
               child: Row(
                 children: [
-                  Text(showTrees ? 'Trees nearby' : 'Hot zones nearby',
-                      style: tt.labelLarge),
+                  Text(
+                    showTrees ? 'Trees nearby' : 'Hot zones nearby',
+                    style: tt.labelLarge,
+                  ),
                   const Spacer(),
-                  Text('$count found',
-                      style: tt.bodySmall!.copyWith(color: AppTheme.textHint)),
+                  Text(
+                    '$count found',
+                    style: tt.bodySmall!.copyWith(color: AppTheme.textHint),
+                  ),
                 ],
               ),
             ),
@@ -1388,10 +1520,9 @@ class _ZonesList extends StatelessWidget {
           child: Text(
             'No results found.',
             textAlign: TextAlign.center,
-            style: Theme.of(context)
-                .textTheme
-                .bodySmall!
-                .copyWith(color: AppTheme.textHint),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall!.copyWith(color: AppTheme.textHint),
           ),
         ),
       );
@@ -1432,18 +1563,15 @@ class _HotZoneRow extends StatelessWidget {
   final VoidCallback onView;
 
   Color get _color => switch (zone.risk) {
-        HeatRisk.extreme || HeatRisk.high => AppTheme.riskExtreme,
-        HeatRisk.medium => AppTheme.markerOrange,
-        HeatRisk.low => AppTheme.riskNone,
-      };
+    HeatRisk.extreme || HeatRisk.high => AppTheme.riskExtreme,
+    HeatRisk.medium => AppTheme.markerOrange,
+    HeatRisk.low => AppTheme.riskNone,
+  };
 
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
-    final meta = [
-      ?distance,
-      '${zone.verifications} verified',
-    ].join(' · ');
+    final meta = [?distance, '${zone.verifications} verified'].join(' · ');
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(AppTheme.spaceSM + 4),
@@ -1457,8 +1585,11 @@ class _HotZoneRow extends StatelessWidget {
               child: SizedBox(
                 width: 40,
                 height: 40,
-                child: Icon(Icons.local_fire_department,
-                    color: _color, size: 20),
+                child: Icon(
+                  Icons.local_fire_department,
+                  color: _color,
+                  size: 20,
+                ),
               ),
             ),
             const SizedBox(width: AppTheme.spaceSM + 4),
@@ -1466,15 +1597,19 @@ class _HotZoneRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(zone.title,
-                      style: tt.bodyLarge,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
+                  Text(
+                    zone.title,
+                    style: tt.bodyLarge,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   const SizedBox(height: 2),
                   Text(zone.category, style: tt.bodySmall),
                   const SizedBox(height: AppTheme.spaceXS + 2),
-                  Text(meta,
-                      style: tt.labelSmall!.copyWith(color: AppTheme.textHint)),
+                  Text(
+                    meta,
+                    style: tt.labelSmall!.copyWith(color: AppTheme.textHint),
+                  ),
                 ],
               ),
             ),
@@ -1485,12 +1620,16 @@ class _HotZoneRow extends StatelessWidget {
                 foregroundColor: AppTheme.primary,
                 side: const BorderSide(color: AppTheme.primary),
                 minimumSize: const Size(52, 34),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: AppTheme.spaceSM + 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppTheme.spaceSM + 4,
+                ),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppTheme.radiusMD)),
-                textStyle:
-                    const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusMD),
+                ),
+                textStyle: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
                 elevation: 0,
               ),
               child: const Text('View'),
@@ -1524,8 +1663,11 @@ class _TreeRow extends StatelessWidget {
               child: SizedBox(
                 width: 40,
                 height: 40,
-                child: Icon(Icons.park_outlined,
-                    color: AppTheme.textOnDark, size: 20),
+                child: Icon(
+                  Icons.park_outlined,
+                  color: AppTheme.textOnDark,
+                  size: 20,
+                ),
               ),
             ),
             const SizedBox(width: AppTheme.spaceSM + 4),
@@ -1533,10 +1675,12 @@ class _TreeRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(pin.title,
-                      style: tt.bodyLarge,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
+                  Text(
+                    pin.title,
+                    style: tt.bodyLarge,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                   const SizedBox(height: 2),
                   Text(pin.locationName, style: tt.bodySmall),
                 ],
@@ -1549,12 +1693,16 @@ class _TreeRow extends StatelessWidget {
                 foregroundColor: AppTheme.primary,
                 side: const BorderSide(color: AppTheme.primary),
                 minimumSize: const Size(52, 34),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: AppTheme.spaceSM + 4),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppTheme.spaceSM + 4,
+                ),
                 shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppTheme.radiusMD)),
-                textStyle:
-                    const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusMD),
+                ),
+                textStyle: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
                 elevation: 0,
               ),
               child: const Text('View'),
@@ -1578,8 +1726,9 @@ class _SearchHit {
   final HotZoneReport? zone;
 
   String get title => spot?.name ?? zone!.title;
-  String get subtitle =>
-      spot != null ? '${spot!.displayCategory} · ${spot!.distance}' : zone!.location;
+  String get subtitle => spot != null
+      ? '${spot!.displayCategory} · ${spot!.distance}'
+      : zone!.location;
   IconData get icon => spot != null
       ? switch (spot!.type) {
           'Water' => Icons.water_drop_outlined,
@@ -1588,8 +1737,7 @@ class _SearchHit {
           _ => Icons.store_outlined,
         }
       : Icons.local_fire_department_outlined;
-  Color get color =>
-      spot != null ? AppTheme.primary : AppTheme.riskExtreme;
+  Color get color => spot != null ? AppTheme.primary : AppTheme.riskExtreme;
 }
 
 class _SearchField extends StatelessWidget {
@@ -1631,10 +1779,9 @@ class _SearchField extends StatelessWidget {
                   hintText: coolSpotsMode
                       ? 'Search water, shade, air conditioning…'
                       : 'Search hot zones, places, stations…',
-                  hintStyle: Theme.of(context)
-                      .textTheme
-                      .bodyMedium!
-                      .copyWith(color: AppTheme.textHint),
+                  hintStyle: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium!.copyWith(color: AppTheme.textHint),
                 ),
               ),
             ),
@@ -1673,12 +1820,18 @@ class _SearchResults extends StatelessWidget {
                 padding: const EdgeInsets.all(AppTheme.spaceMD),
                 child: Row(
                   children: [
-                    const Icon(Icons.search_off,
-                        size: 18, color: AppTheme.textHint),
+                    const Icon(
+                      Icons.search_off,
+                      size: 18,
+                      color: AppTheme.textHint,
+                    ),
                     const SizedBox(width: AppTheme.spaceSM),
-                    Text('No results found',
-                        style: tt.bodyMedium!
-                            .copyWith(color: AppTheme.textSecondary)),
+                    Text(
+                      'No results found',
+                      style: tt.bodyMedium!.copyWith(
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
                   ],
                 ),
               )
@@ -1697,12 +1850,18 @@ class _SearchResults extends StatelessWidget {
                       backgroundColor: hit.color.withValues(alpha: .12),
                       child: Icon(hit.icon, size: 16, color: hit.color),
                     ),
-                    title: Text(hit.title,
-                        style: tt.bodyLarge, maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
-                    subtitle: Text(hit.subtitle,
-                        style: tt.bodySmall, maxLines: 1,
-                        overflow: TextOverflow.ellipsis),
+                    title: Text(
+                      hit.title,
+                      style: tt.bodyLarge,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: Text(
+                      hit.subtitle,
+                      style: tt.bodySmall,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
                     onTap: () => onSelect(hit),
                   );
                 },
