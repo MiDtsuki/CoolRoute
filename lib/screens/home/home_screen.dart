@@ -45,112 +45,177 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _hotZones = zones);
   }
 
+  List<Widget> _actionCards(BuildContext context) => [
+        _ActionCard(
+          icon: Icons.route_rounded,
+          iconBg: AppTheme.primaryLight,
+          iconColor: AppTheme.primary,
+          title: 'Find Heat-Safe Route',
+          subtitle: 'Avoid heat zones',
+          onTap: () => _push(context, 'Route', const RouteScreen()),
+        ),
+        _ActionCard(
+          icon: Icons.local_fire_department_rounded,
+          iconBg: AppTheme.riskExtremeBg,
+          iconColor: AppTheme.riskExtreme,
+          title: 'Report Hot Zone',
+          subtitle: 'Help the community',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute<void>(
+                builder: (_) => const CreateHotZoneReportScreen()),
+          ),
+        ),
+        _ActionCard(
+          icon: Icons.ac_unit_rounded,
+          iconBg: AppTheme.riskLowBg,
+          iconColor: AppTheme.riskNone,
+          title: 'Find Cool Spot',
+          subtitle: 'Nearby cooling places',
+          onTap: widget.onFindCoolSpot ?? () {},
+        ),
+        _ActionCard(
+          icon: Icons.park_outlined,
+          iconBg: AppTheme.riskLowBg,
+          iconColor: AppTheme.markerTree,
+          title: 'Plant a Tree 🌱',
+          subtitle: 'View community trees',
+          onTap: widget.onPlantTree ?? () {},
+        ),
+      ];
+
   @override
   Widget build(BuildContext context) {
     final isWide = MediaQuery.sizeOf(context).width > 800;
+    final recentZones = _hotZones.take(3).toList();
 
-    return SingleChildScrollView(
-      child: Center(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: isWide ? 900 : double.infinity),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              FutureBuilder<WeatherInfo>(
-                future: _weatherFuture,
-                builder: (context, snapshot) {
-                  if (!snapshot.hasData) {
-                    return const ColoredBox(
-                      color: AppTheme.bgHero,
-                      child: SizedBox(
-                        height: 180,
-                        child: Center(
-                          child: CircularProgressIndicator(color: AppTheme.primary),
-                        ),
-                      ),
-                    );
-                  }
-                  return _HeroCard(
-                    weather: snapshot.data!,
-                    hotZoneCount: _hotZones.length,
-                  );
-                },
-              ),
-              Padding(
-                padding: const EdgeInsets.fromLTRB(
-                  AppTheme.spaceMD, AppTheme.spaceLG,
-                  AppTheme.spaceMD, AppTheme.spaceSM,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text('Quick actions', style: Theme.of(context).textTheme.labelLarge),
-                    const SizedBox(height: AppTheme.spaceSM),
-                    GridView.count(
-                      crossAxisCount: isWide ? 4 : 2,
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      mainAxisSpacing: AppTheme.spaceSM,
-                      crossAxisSpacing: AppTheme.spaceSM,
-                      childAspectRatio: 1.6,
+    final hero = FutureBuilder<WeatherInfo>(
+      future: _weatherFuture,
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const ColoredBox(
+            color: AppTheme.bgHero,
+            child: SizedBox(
+              height: 180,
+              child: Center(child: CircularProgressIndicator(color: AppTheme.primary)),
+            ),
+          );
+        }
+        return _HeroCard(
+          weather: snapshot.data!,
+          hotZoneCount: _hotZones.length,
+          isWide: isWide,
+        );
+      },
+    );
+
+    if (isWide) {
+      // Web: hero full-width, then two-column content area below
+      return SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            hero,
+            Padding(
+              padding: const EdgeInsets.all(AppTheme.spaceLG),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Left: quick actions (wider)
+                  Expanded(
+                    flex: 3,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _ActionCard(
-                          icon: Icons.route_rounded,
-                          iconBg: AppTheme.primaryLight,
-                          iconColor: AppTheme.primary,
-                          title: 'Find Heat-Safe Route',
-                          subtitle: 'Avoid heat zones',
-                          onTap: () => _push(context, 'Route', const RouteScreen()),
-                        ),
-                        _ActionCard(
-                          icon: Icons.local_fire_department_rounded,
-                          iconBg: AppTheme.riskExtremeBg,
-                          iconColor: AppTheme.riskExtreme,
-                          title: 'Report Hot Zone',
-                          subtitle: 'Help the community',
-                          onTap: () => Navigator.of(context).push(
-                            MaterialPageRoute<void>(
-                                builder: (_) => const CreateHotZoneReportScreen()),
-                          ),
-                        ),
-                        _ActionCard(
-                          icon: Icons.ac_unit_rounded,
-                          iconBg: AppTheme.riskLowBg,
-                          iconColor: AppTheme.riskNone,
-                          title: 'Find Cool Spot',
-                          subtitle: '6 spots nearby',
-                          onTap: widget.onFindCoolSpot ?? () {},
-                        ),
-                        _ActionCard(
-                          icon: Icons.park_outlined,
-                          iconBg: AppTheme.riskLowBg,
-                          iconColor: AppTheme.markerTree,
-                          title: 'Plant a Tree 🌱',
-                          subtitle: 'View community trees',
-                          onTap: widget.onPlantTree ?? () {},
+                        Text('Quick actions',
+                            style: Theme.of(context).textTheme.labelLarge),
+                        const SizedBox(height: AppTheme.spaceMD),
+                        GridView.count(
+                          crossAxisCount: 2,
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          mainAxisSpacing: AppTheme.spaceMD,
+                          crossAxisSpacing: AppTheme.spaceMD,
+                          childAspectRatio: 2.2,
+                          children: _actionCards(context),
                         ),
                       ],
                     ),
-                    const SizedBox(height: AppTheme.spaceLG),
-                    Text('Recent alerts', style: Theme.of(context).textTheme.labelLarge),
-                    const SizedBox(height: AppTheme.spaceSM),
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: AppTheme.spaceLG),
+                  // Right: recent alerts (narrower)
+                  Expanded(
+                    flex: 2,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Recent alerts',
+                            style: Theme.of(context).textTheme.labelLarge),
+                        const SizedBox(height: AppTheme.spaceMD),
+                        if (recentZones.isEmpty)
+                          Text('No active alerts.',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .bodySmall!
+                                  .copyWith(color: AppTheme.textHint))
+                        else
+                          for (final r in recentZones) ...[
+                            _AlertCard(report: r),
+                            const SizedBox(height: AppTheme.spaceSM),
+                          ],
+                      ],
+                    ),
+                  ),
+                ],
               ),
-              SizedBox(
-                height: 40,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: AppTheme.spaceMD),
-                  itemCount: _hotZones.length < 3 ? _hotZones.length : 3,
-                  separatorBuilder: (_, _) => const SizedBox(width: AppTheme.spaceSM),
-                  itemBuilder: (_, i) => _AlertChip(report: _hotZones[i]),
-                ),
-              ),
-              const SizedBox(height: AppTheme.spaceLG),
-            ],
-          ),
+            ),
+          ],
         ),
+      );
+    }
+
+    // Mobile: stacked layout
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          hero,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+              AppTheme.spaceMD, AppTheme.spaceLG,
+              AppTheme.spaceMD, AppTheme.spaceSM,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Quick actions', style: Theme.of(context).textTheme.labelLarge),
+                const SizedBox(height: AppTheme.spaceSM),
+                GridView.count(
+                  crossAxisCount: 2,
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  mainAxisSpacing: AppTheme.spaceSM,
+                  crossAxisSpacing: AppTheme.spaceSM,
+                  childAspectRatio: 1.6,
+                  children: _actionCards(context),
+                ),
+                const SizedBox(height: AppTheme.spaceLG),
+                Text('Recent alerts', style: Theme.of(context).textTheme.labelLarge),
+                const SizedBox(height: AppTheme.spaceSM),
+              ],
+            ),
+          ),
+          SizedBox(
+            height: 40,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: AppTheme.spaceMD),
+              itemCount: recentZones.length,
+              separatorBuilder: (_, _) => const SizedBox(width: AppTheme.spaceSM),
+              itemBuilder: (_, i) => _AlertChip(report: recentZones[i]),
+            ),
+          ),
+          const SizedBox(height: AppTheme.spaceLG),
+        ],
       ),
     );
   }
@@ -162,10 +227,12 @@ class _HeroCard extends StatelessWidget {
   const _HeroCard({
     required this.weather,
     required this.hotZoneCount,
+    this.isWide = false,
   });
 
   final WeatherInfo weather;
   final int hotZoneCount;
+  final bool isWide;
 
   static String _time() {
     final t = DateTime.now();
@@ -321,6 +388,76 @@ class _ActionCard extends StatelessWidget {
               Text(subtitle, style: tt.bodySmall),
             ],
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Alert card (web sidebar) ─────────────────────────────────────────────────
+
+class _AlertCard extends StatelessWidget {
+  const _AlertCard({required this.report});
+  final HotZoneReport report;
+
+  Color get _dotColor => switch (report.risk) {
+        HeatRisk.extreme || HeatRisk.high => AppTheme.riskExtreme,
+        HeatRisk.medium => AppTheme.riskMedium,
+        HeatRisk.low => AppTheme.riskLow,
+      };
+
+  Color get _dotBg => switch (report.risk) {
+        HeatRisk.extreme || HeatRisk.high => AppTheme.riskExtremeBg,
+        HeatRisk.medium => AppTheme.riskMediumBg,
+        HeatRisk.low => AppTheme.riskLowBg,
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: AppTheme.bgCard,
+        borderRadius: BorderRadius.circular(AppTheme.radiusLG),
+        border: Border.all(color: AppTheme.borderLight, width: 0.5),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(AppTheme.spaceMD),
+        child: Row(
+          children: [
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: _dotBg,
+                shape: BoxShape.circle,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Icon(Icons.local_fire_department,
+                    size: 16, color: _dotColor),
+              ),
+            ),
+            const SizedBox(width: AppTheme.spaceMD),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(report.title,
+                      style: tt.labelLarge,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
+                  const SizedBox(height: 2),
+                  Text(report.location,
+                      style: tt.bodySmall!
+                          .copyWith(color: AppTheme.textSecondary),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
+                ],
+              ),
+            ),
+            const SizedBox(width: AppTheme.spaceSM),
+            Text(report.displayTimeAgo,
+                style: tt.bodySmall!.copyWith(color: AppTheme.textHint)),
+          ],
         ),
       ),
     );

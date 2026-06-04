@@ -34,21 +34,28 @@ class RouteScreen extends StatefulWidget {
 }
 
 class _RouteScreenState extends State<RouteScreen> {
+  final TextEditingController _startCtrl = TextEditingController();
   final TextEditingController _searchCtrl = TextEditingController();
   final RoutingService _routing = RoutingService();
 
   LatLng? _start;
   bool _startIsReal = false;
+  bool _startIsCustom = false; // true when overridden from GPS
   LatLng? _destination;
 
   List<HotZoneReport> _hotZones = const [];
+  List<GeoResult> _startResults = const [];
   List<GeoResult> _searchResults = const [];
   List<RouteOption> _routes = const [];
   RouteOption? _selected;
 
   bool _locating = true;
+  bool _startSearching = false;
   bool _searching = false;
   bool _loadingRoutes = false;
+
+  // Which field the next map tap will apply to.
+  bool _editingStart = false;
 
   @override
   void initState() {
@@ -71,6 +78,7 @@ class _RouteScreenState extends State<RouteScreen> {
 
   @override
   void dispose() {
+    _startCtrl.dispose();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -85,6 +93,75 @@ class _RouteScreenState extends State<RouteScreen> {
     });
     // Reopened a saved route → plan it now that we have a start point.
     if (_destination != null && _routes.isEmpty) _findRoutes();
+  }
+
+  Future<void> _runStartSearch() async {
+    final query = _startCtrl.text.trim();
+    if (query.isEmpty) {
+      setState(() => _startResults = const []);
+      return;
+    }
+    if (!RoutingService.isConfigured) {
+      _showKeyNeeded();
+      return;
+    }
+    setState(() => _startSearching = true);
+    final results = await _routing.geocode(
+      query,
+      focusLat: _start?.latitude,
+      focusLng: _start?.longitude,
+    );
+    if (!mounted) return;
+    setState(() {
+      _startResults = results;
+      _startSearching = false;
+    });
+  }
+
+  void _pickStartResult(GeoResult result) {
+    FocusScope.of(context).unfocus();
+    _startCtrl.text = result.label;
+    setState(() {
+      _start = result.latLng;
+      _startIsReal = false;
+      _startIsCustom = true;
+      _startResults = const [];
+      _editingStart = false;
+    });
+    _findRoutes();
+  }
+
+  Future<void> _resetStartToLocation() async {
+    FocusScope.of(context).unfocus();
+    _startCtrl.clear();
+    setState(() {
+      _start = null;
+      _startIsReal = false;
+      _startIsCustom = false;
+      _locating = true;
+      _routes = const [];
+      _selected = null;
+      _editingStart = false;
+    });
+    await _resolveStart();
+  }
+
+  void _swapStartDestination() {
+    final swappedStart = _destination;
+    final swappedStartText = _searchCtrl.text;
+    final swappedDest = _start;
+    final swappedDestText = _startCtrl.text;
+    _startCtrl.text = swappedStartText;
+    _searchCtrl.text = swappedDestText;
+    setState(() {
+      _start = swappedStart;
+      _startIsReal = false;
+      _startIsCustom = swappedStart != null;
+      _destination = swappedDest;
+      _routes = const [];
+      _selected = null;
+    });
+    if (_start != null && _destination != null) _findRoutes();
   }
 
   Future<void> _loadHotZones() async {
@@ -133,11 +210,22 @@ class _RouteScreenState extends State<RouteScreen> {
 
   void _onMapTap(LatLng point) {
     FocusScope.of(context).unfocus();
-    setState(() {
-      _destination = point;
-      _searchResults = const [];
+    if (_editingStart) {
+      _startCtrl.text = 'Dropped pin';
+      setState(() {
+        _start = point;
+        _startIsReal = false;
+        _startIsCustom = true;
+        _startResults = const [];
+        _editingStart = false;
+      });
+    } else {
       _searchCtrl.text = 'Dropped pin';
-    });
+      setState(() {
+        _destination = point;
+        _searchResults = const [];
+      });
+    }
     _findRoutes();
   }
 
@@ -231,6 +319,16 @@ class _RouteScreenState extends State<RouteScreen> {
       debugPrint('VERIFY: save route error: $e');
     }
   }
+
+  void _focusStart() => setState(() {
+        _editingStart = true;
+        _searchResults = const [];
+      });
+
+  void _focusDestination() => setState(() {
+        _editingStart = false;
+        _startResults = const [];
+      });
 
   void _showKeyNeeded() {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -335,46 +433,92 @@ class _DirectionsBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
-    final hasDestination = state._destination != null;
+    final s = state;
+
+    // The active results list — start results when start field is focused,
+    // destination results otherwise.
+    final activeResults =
+        s._editingStart ? s._startResults : s._searchResults;
+    final activeSearching = s._editingStart ? s._startSearching : s._searching;
 
     final inner = Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        // Origin row
+        // ── Start row ──────────────────────────────────────────────────────
         Row(
           children: [
             const _Dot(color: AppTheme.markerBlue),
             const SizedBox(width: AppTheme.spaceSM + 2),
             Expanded(
-              child: Text(
-                state._locating
-                    ? 'Locating…'
-                    : state._startIsReal
-                        ? 'Your location'
-                        : 'Bangkok (location unavailable)',
-                style: tt.bodyMedium!.copyWith(
-                  color: state._locating || state._startIsReal
-                      ? AppTheme.textPrimary
-                      : AppTheme.riskMedium,
+              child: TextField(
+                controller: s._startCtrl,
+                textInputAction: TextInputAction.search,
+                onTap: s._focusStart,
+                onChanged: (_) => s._runStartSearch(),
+                onSubmitted: (_) => s._runStartSearch(),
+                decoration: InputDecoration(
+                  isDense: true,
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  filled: false,
+                  hintText: s._locating
+                      ? 'Locating…'
+                      : s._startIsReal
+                          ? 'Your location'
+                          : 'Starting point',
+                  hintStyle: tt.bodyMedium!.copyWith(
+                    color: !s._startIsCustom && !s._startIsReal
+                        ? AppTheme.riskMedium
+                        : AppTheme.textHint,
+                  ),
                 ),
               ),
             ),
+            // GPS reset — appears only when start is overridden
+            if (s._startIsCustom)
+              IconButton(
+                icon: const Icon(Icons.my_location, size: 18),
+                color: AppTheme.primary,
+                tooltip: 'Use my location',
+                onPressed: s._resetStartToLocation,
+                visualDensity: VisualDensity.compact,
+              )
+            else if (!s._locating)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8),
+                child: Icon(Icons.gps_fixed, size: 16, color: AppTheme.primary),
+              ),
           ],
         ),
-        const Padding(
-          padding: EdgeInsets.only(left: 5),
-          child: _DottedConnector(),
+        // ── Swap button + dotted connector ─────────────────────────────────
+        Row(
+          children: [
+            const SizedBox(width: 5),
+            const _DottedConnector(),
+            const Spacer(),
+            InkWell(
+              borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+              onTap: s._swapStartDestination,
+              child: const Padding(
+                padding: EdgeInsets.all(4),
+                child: Icon(Icons.swap_vert, size: 18, color: AppTheme.textHint),
+              ),
+            ),
+            const SizedBox(width: 4),
+          ],
         ),
-        // Destination row
+        // ── Destination row ────────────────────────────────────────────────
         Row(
           children: [
             const Icon(Icons.place, size: 18, color: AppTheme.riskExtreme),
             const SizedBox(width: AppTheme.spaceSM),
             Expanded(
               child: TextField(
-                controller: state._searchCtrl,
+                controller: s._searchCtrl,
                 textInputAction: TextInputAction.search,
-                onSubmitted: (_) => state._runSearch(),
+                onTap: s._focusDestination,
+                onSubmitted: (_) => s._runSearch(),
                 decoration: const InputDecoration(
                   isDense: true,
                   border: InputBorder.none,
@@ -385,29 +529,32 @@ class _DirectionsBar extends StatelessWidget {
                 ),
               ),
             ),
-            if (state._searching)
+            if (activeSearching && !s._editingStart)
               const Padding(
                 padding: EdgeInsets.all(6),
                 child: SizedBox(
-                    width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2)),
               )
-            else if (hasDestination)
+            else if (s._destination != null)
               IconButton(
                 icon: const Icon(Icons.close, size: 18),
                 color: AppTheme.textHint,
-                onPressed: state._clearDestination,
+                onPressed: s._clearDestination,
                 visualDensity: VisualDensity.compact,
               )
             else
               IconButton(
                 icon: const Icon(Icons.search, size: 20),
                 color: AppTheme.primary,
-                onPressed: state._runSearch,
+                onPressed: s._runSearch,
                 visualDensity: VisualDensity.compact,
               ),
           ],
         ),
-        if (state._searchResults.isNotEmpty) ...[
+        // ── Search results (start or destination) ──────────────────────────
+        if (activeResults.isNotEmpty) ...[
           const Divider(height: AppTheme.spaceMD),
           ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 220),
@@ -415,29 +562,56 @@ class _DirectionsBar extends StatelessWidget {
               shrinkWrap: true,
               padding: EdgeInsets.zero,
               children: [
-                for (final r in state._searchResults)
+                for (final r in activeResults)
                   ListTile(
                     dense: true,
                     contentPadding: EdgeInsets.zero,
                     leading: const Icon(Icons.place_outlined,
                         size: 18, color: AppTheme.primary),
                     title: Text(r.label,
-                        maxLines: 2, overflow: TextOverflow.ellipsis, style: tt.bodyMedium),
-                    onTap: () => state._pickResult(r),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: tt.bodyMedium),
+                    onTap: () => s._editingStart
+                        ? s._pickStartResult(r)
+                        : s._pickResult(r),
                   ),
               ],
             ),
+          ),
+        ],
+        // ── Tap-map hint when a field is active ────────────────────────────
+        if (activeResults.isEmpty &&
+            (s._editingStart
+                ? s._startCtrl.text.isEmpty
+                : s._searchCtrl.text.isEmpty)) ...[
+          const SizedBox(height: AppTheme.spaceXS),
+          Row(
+            children: [
+              const Icon(Icons.touch_app_outlined,
+                  size: 13, color: AppTheme.textHint),
+              const SizedBox(width: 4),
+              Text(
+                s._editingStart
+                    ? 'Or tap the map to set your start point'
+                    : 'Or tap the map to drop a destination pin',
+                style:
+                    tt.bodySmall!.copyWith(color: AppTheme.textHint),
+              ),
+            ],
           ),
         ],
         if (!RoutingService.isConfigured) ...[
           const SizedBox(height: AppTheme.spaceSM),
           Row(
             children: [
-              const Icon(Icons.info_outline, size: 14, color: AppTheme.riskMedium),
+              const Icon(Icons.info_outline,
+                  size: 14, color: AppTheme.riskMedium),
               const SizedBox(width: 6),
               Expanded(
                 child: Text('Add ORS_API_KEY to .env to enable routing.',
-                    style: tt.bodySmall!.copyWith(color: AppTheme.riskMedium)),
+                    style:
+                        tt.bodySmall!.copyWith(color: AppTheme.riskMedium)),
               ),
             ],
           ),

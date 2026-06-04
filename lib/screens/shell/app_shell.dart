@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../services/firebase_auth_service.dart';
 import '../../theme/app_theme.dart';
 import '../data/environmental_data_screen.dart';
 import '../home/home_screen.dart';
@@ -27,15 +26,6 @@ class _AppShellState extends State<AppShell> {
         _mapVersion++;
       });
 
-  // Signs out; the AuthGate at the root then rebuilds to the welcome/login
-  // flow. Wrapped because Firebase may be unavailable in the prototype path.
-  Future<void> _signOut() async {
-    try {
-      await FirebaseAuthService().signOut();
-    } catch (_) {
-      // No active Firebase session — nothing to sign out of.
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -61,7 +51,6 @@ class _AppShellState extends State<AppShell> {
         appBar: _WebNavBar(
           selectedIndex: _index,
           onSelect: (i) => setState(() => _index = i),
-          onSignOut: _signOut,
         ),
         body: body,
       );
@@ -113,12 +102,10 @@ class _WebNavBar extends StatelessWidget implements PreferredSizeWidget {
   const _WebNavBar({
     required this.selectedIndex,
     required this.onSelect,
-    required this.onSignOut,
   });
 
   final int selectedIndex;
   final ValueChanged<int> onSelect;
-  final VoidCallback onSignOut;
 
   @override
   Size get preferredSize => const Size.fromHeight(56);
@@ -159,12 +146,6 @@ class _WebNavBar extends StatelessWidget implements PreferredSizeWidget {
                 onTap: () => onSelect(i),
               ),
             const Spacer(),
-            TextButton.icon(
-              onPressed: onSignOut,
-              icon: const Icon(Icons.logout, size: 18),
-              label: const Text('Sign out'),
-            ),
-            const SizedBox(width: AppTheme.spaceMD),
           ],
         ),
       ),
