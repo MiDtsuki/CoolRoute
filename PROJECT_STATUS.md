@@ -50,8 +50,11 @@ Keys live in `.env` (gitignored — never committed). Firebase provider toggles 
 - [ ] *(follow-up)* richer verification options (shade available / water working / not accurate);
   time-based re-verification; verify community cool spots
 
-**P1 — headline feature**
-- [ ] Real heat-safe routing + heat scoring
+**P1 — headline feature** ✅ DONE
+- [x] Real walking routes (OpenRouteService) with geocoding search + tap-to-pick destination
+- [x] Heat scoring: routes scored by proximity to reported hot zones; coolest = "Recommended"
+- [x] Route drawn as a polyline on the map with start/destination + hot-zone markers
+- [ ] *(follow-up)* factor cool spots / shade into scoring; turn-by-turn steps; save a planned route
 
 **P2 — community + climate depth**
 - [ ] Tree-planting events (create · RSVP · water · donate)
@@ -73,13 +76,13 @@ the community/data-write half is mostly mock. Concretely:
 - **Genuinely working with real data:** Cool Spot Finder (OpenStreetMap), Weather (WeatherAPI),
   NASA GIBS viewer, Auth (email/Google/guest), Home dashboard, the map, the **Profile tab**, and
   the **community hot-zone loop** (report → persist → appears on map → verify → profile stats).
-- **UI only, not connected:** Heat-safe routing (the headline P1 feature is still a dead form).
 - **Not implemented:** Tree-planting **events** (RSVP/water/donate), NDVI vegetation overlay,
   a "Reports" tab, persisted saved routes.
 - **Dead/orphaned code:** `CoolSpotsScreen` — superseded by the Map's Cool Spots mode.
 
-With P0 done, hot-zone reports and verifications now reach Firestore and flow back into the UI;
-the main remaining mock is **heat-safe routing (P1)**.
+With P0 and P1 done, the core loops are real: the community loop (report → persist → map →
+verify → profile) and heat-safe routing (real walking routes scored by hot-zone exposure).
+Remaining gaps are mostly P2: tree-planting events, an NDVI layer, and persisted saved routes.
 
 ---
 
@@ -87,7 +90,7 @@ the main remaining mock is **heat-safe routing (P1)**.
 
 | Concept | Status | Notes |
 |---|---|---|
-| Heat-safe routing | 🟡 | `route_screen.dart` shows 3 dummy routes from `DummyData.routes`. Start/Destination fields and "Find safer route" button are **no-ops** (`onPressed: () {}`). `RouteService` just returns dummy. No routing engine, no heat scoring. |
+| Heat-safe routing | ✅ | Real walking routes via **OpenRouteService** (`RoutingService`): start = current location, destination by geocoding search or map tap. `RoutePlanner` scores each route by proximity to reported hot zones and flags the coolest "Recommended"; routes draw as polylines (`route_map.dart`). Needs `ORS_API_KEY` in `.env`. *Follow-up:* fold cool spots/shade into scoring + turn-by-turn. |
 | Community hot zone reports | ✅ | Reports now **persist to Firestore**. `ReportSpotSheet` (Map) drops an optimistic pin then writes via `ReportService.submitHotZoneReport()`; `CreateHotZoneReportScreen` (Home, now with field controllers) writes too. Map + Home **read** reports via `getHotZoneReports()`. Both bump the author's `reportCount`. |
 | Cool spot finder | ✅ | **Best-implemented feature.** `PlacesService` queries the OSM Overpass API for real nearby libraries, malls, water points, parks, cafés, etc. — real lat/lng, real distances, category buckets. Falls back to dummy on failure. Filters + live search work. |
 | Weather integration | ✅ | `WeatherService` → WeatherAPI.com (`current.json`), parses temp/feels-like/humidity/UV. Falls back to dummy Bangkok weather when no key. Drives Home hero + Data info panel. |
@@ -102,7 +105,7 @@ the main remaining mock is **heat-safe routing (P1)**.
 |---|---|---|
 | Login and Sign-up | ✅ (code) | `FirebaseAuthService` + `login_screen.dart` implement email/password, Google (native `GoogleAuthProvider` — popup on web, provider flow on mobile, **no `google_sign_in` package needed**), and anonymous/guest. **Requires Firebase console config** (providers enabled) to actually authenticate. "profile, role, preferences, saved data" → not real (see Profile row). |
 | Home Dashboard | ✅ | Weather hero (temp, feels-like, humidity, UV, "Extreme risk" badge), 4 quick actions (Route, Report Hot Zone, Find Cool Spot, Plant a Tree), recent-alert chips. Responsive 2-col / 4-col. |
-| Heat-Safe Route Suggestion | 🟡 | See "Heat-safe routing" above. Inputs non-functional; no real start/destination handling. |
+| Heat-Safe Route Suggestion | ✅ | See "Heat-safe routing" above — real start/destination, real walking routes, heat-scored options drawn on the map. |
 | Hot Zone Report | ✅ | Persists to Firestore (see §1 row). Spec's tree-planting-as-report-type + dedicated Reports tab still pending (P2). Cool-spot suggestions still local-only (P0 follow-up). |
 | Community Verification | ✅ (core) | "Still hot" / "Problem fixed" now call `ReportService.verifyReport(id)` (optimistic count bump + persist) and credit the verifier's `verifiedReportCount`. Follow-up: per-user "already verified" guard and the richer option set (shade available / water working / not accurate). |
 | Cool Spot Finder | ✅ | Real data + filters (Water / Shade / Air-conditioned / Open Now) on the Map. "Verified" filter exists on the (orphaned) standalone screen. |
@@ -206,6 +209,13 @@ falls back to the dummy-data prototype path if not configured. `flutter analyze`
 
 Newest first. Dates are absolute.
 
+- **2026-06-03** — **P1: real heat-safe routing.** New `RoutingService` (OpenRouteService —
+  CORS-friendly, needs `ORS_API_KEY`) does geocoding + walking directions (with alternatives).
+  `RoutePlanner` scores each route by proximity to reported hot zones and labels Fastest / Cooler
+  (Recommended). `route_screen.dart` rewritten: start = current location, destination via search
+  **or** map tap; `route_map.dart` draws the chosen route as a polyline with start/destination +
+  hot-zone markers. `RouteOption` extended with geometry/metrics. `flutter analyze` clean.
+  *(Not yet committed. Requires `ORS_API_KEY` in `.env`.)*
 - **2026-06-03** — **Cool-spot suggestions now persist.** The map's "Suggest a Cool Spot" form
   writes to Firestore via `CoolSpotService.submitCoolSpot` (stores real lat/lng + category, returns
   the doc id). The map merges community suggestions (those with real coordinates) with the live
