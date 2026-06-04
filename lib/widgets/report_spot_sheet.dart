@@ -237,6 +237,7 @@ class _ReportSpotSheetState extends State<ReportSpotSheet> {
         );
         if (uid != null) {
           await UserProfileService().incrementReportCount(uid);
+          notifyProfileChanged();
         }
         // Tell live screens (Map, Home) to reload so the new report appears
         // with its real Firestore id.

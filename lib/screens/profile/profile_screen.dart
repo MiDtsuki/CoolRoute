@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 
 import '../../dummy_data/dummy_data.dart';
 import '../../models/user_profile.dart';
 import '../../services/firebase_auth_service.dart';
+import '../../services/report_refresh.dart';
 import '../../services/user_profile_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_card.dart';
@@ -32,6 +34,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     _load();
+    profileRevision.addListener(_load);
+  }
+
+  @override
+  void dispose() {
+    profileRevision.removeListener(_load);
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -139,6 +148,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  Future<void> _removeSavedRoute(SavedRoute route) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final uid = _safeUid();
+    if (uid == null) return;
+    // Optimistically drop it from the list (match by name).
+    setState(() {
+      _profile = UserProfile(
+        id: _profile.id,
+        name: _profile.name,
+        role: _profile.role,
+        location: _profile.location,
+        riskProfile: _profile.riskProfile,
+        savedRoutes:
+            _profile.savedRoutes.where((r) => r.name != route.name).toList(),
+        reportCount: _profile.reportCount,
+        verifiedReportCount: _profile.verifiedReportCount,
+      );
+    });
+    messenger.showSnackBar(const SnackBar(content: Text('Route removed.')));
+    try {
+      await _service.removeSavedRoute(uid, route);
+    } catch (e) {
+      debugPrint('VERIFY: remove saved route error: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isWide = MediaQuery.sizeOf(context).width > 800;
@@ -184,7 +219,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: AppTheme.spaceLG),
                   _SectionTitle('Saved routes'),
                   const SizedBox(height: AppTheme.spaceSM),
-                  _SavedRoutes(routes: profile.savedRoutes),
+                  _SavedRoutes(
+                    routes: profile.savedRoutes,
+                    onDelete: _removeSavedRoute,
+                  ),
                   const SizedBox(height: AppTheme.spaceLG),
                   _SectionTitle('Account'),
                   const SizedBox(height: AppTheme.spaceSM),
@@ -383,9 +421,10 @@ class _StatBox extends StatelessWidget {
 // ── Saved routes ──────────────────────────────────────────────────────────────
 
 class _SavedRoutes extends StatelessWidget {
-  const _SavedRoutes({required this.routes});
+  const _SavedRoutes({required this.routes, this.onDelete});
 
-  final List<String> routes;
+  final List<SavedRoute> routes;
+  final ValueChanged<SavedRoute>? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -408,8 +447,11 @@ class _SavedRoutes extends StatelessWidget {
     }
     return Column(
       children: [
-        for (final name in routes) ...[
-          _SavedRouteCard(name: name),
+        for (final route in routes) ...[
+          _SavedRouteCard(
+            route: route,
+            onDelete: onDelete == null ? null : () => onDelete!(route),
+          ),
           const SizedBox(height: AppTheme.spaceSM),
         ],
       ],
@@ -418,9 +460,10 @@ class _SavedRoutes extends StatelessWidget {
 }
 
 class _SavedRouteCard extends StatelessWidget {
-  const _SavedRouteCard({required this.name});
+  const _SavedRouteCard({required this.route, this.onDelete});
 
-  final String name;
+  final SavedRoute route;
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -431,22 +474,38 @@ class _SavedRouteCard extends StatelessWidget {
           MaterialPageRoute<void>(
             builder: (_) => Scaffold(
               appBar: AppBar(title: const Text('Saved route')),
-              body: SafeArea(child: RouteScreen(initialSelectedRouteName: name)),
+              body: SafeArea(
+                child: RouteScreen(
+                  initialSelectedRouteName: route.name,
+                  initialDestination: route.hasDestination
+                      ? LatLng(route.destLat!, route.destLng!)
+                      : null,
+                ),
+              ),
             ),
           ),
         );
       },
       child: AppCard(
-        padding: const EdgeInsets.all(AppTheme.spaceMD),
+        padding: const EdgeInsets.fromLTRB(
+            AppTheme.spaceMD, AppTheme.spaceSM, AppTheme.spaceXS, AppTheme.spaceSM),
         child: Row(
           children: [
             const Icon(Icons.route, color: AppTheme.primary),
             const SizedBox(width: AppTheme.spaceMD),
             Expanded(
-              child: Text(name,
+              child: Text(route.name,
                   style: Theme.of(context).textTheme.labelLarge),
             ),
-            const Icon(Icons.chevron_right, color: AppTheme.textHint),
+            if (onDelete != null)
+              IconButton(
+                icon: const Icon(Icons.delete_outline, size: 18),
+                color: AppTheme.textHint,
+                tooltip: 'Remove',
+                onPressed: onDelete,
+              )
+            else
+              const Icon(Icons.chevron_right, color: AppTheme.textHint),
           ],
         ),
       ),

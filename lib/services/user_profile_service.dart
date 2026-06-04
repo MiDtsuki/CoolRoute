@@ -83,15 +83,17 @@ class UserProfileService {
     );
   }
 
-  Future<void> addSavedRoute(String userId, String routeName) async {
-    await _db.collection('users').doc(userId).update({
-      'savedRoutes': FieldValue.arrayUnion([routeName]),
-    });
+  Future<void> addSavedRoute(String userId, SavedRoute route) async {
+    await _db.collection('users').doc(userId).set(
+      {'savedRoutes': FieldValue.arrayUnion([route.toMap()])},
+      SetOptions(merge: true),
+    );
   }
 
-  Future<void> removeSavedRoute(String userId, String routeName) async {
-    await _db.collection('users').doc(userId).update({
-      'savedRoutes': FieldValue.arrayRemove([routeName]),
-    });
+  Future<void> removeSavedRoute(String userId, SavedRoute route) async {
+    await _db.collection('users').doc(userId).set(
+      {'savedRoutes': FieldValue.arrayRemove([route.toMap()])},
+      SetOptions(merge: true),
+    );
   }
 }

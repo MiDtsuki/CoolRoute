@@ -48,6 +48,7 @@ class GibsTileMap extends StatelessWidget {
       tileMatrixSet: layer.gibsTileMatrixSet,
       format: layer.gibsFormat,
       date: date,
+      monthly: layer.gibsMonthly,
     );
 
     return Stack(

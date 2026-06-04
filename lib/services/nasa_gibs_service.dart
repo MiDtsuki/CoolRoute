@@ -21,9 +21,25 @@ class NasaGibsService {
     required String tileMatrixSet,
     String format = 'png',
     DateTime? date,
+    bool monthly = false,
   }) {
-    final stamp = _formatDate(date ?? _defaultDate());
+    var d = date ?? _defaultDate();
+    if (monthly) d = _monthlyStamp(d);
+    final stamp = _formatDate(d);
     return '$_wmtsBase/$layerId/default/$stamp/$tileMatrixSet/{z}/{y}/{x}.$format';
+  }
+
+  /// Snaps a date to the first of the month, two months back — monthly NDVI
+  /// composites for the current (and often previous) month aren't published
+  /// yet, so this lands on a completed, available month.
+  static DateTime _monthlyStamp(DateTime d) {
+    var year = d.year;
+    var month = d.month - 2;
+    while (month < 1) {
+      month += 12;
+      year -= 1;
+    }
+    return DateTime.utc(year, month, 1);
   }
 
   /// Static reference basemap (no time dimension) drawn beneath data layers so

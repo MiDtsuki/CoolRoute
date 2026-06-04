@@ -11,6 +11,7 @@ class EnvironmentalLayer {
     this.gibsTileMatrixSet = 'GoogleMapsCompatible_Level7',
     this.gibsMaxZoom = 7,
     this.gibsFormat = 'png',
+    this.gibsMonthly = false,
     this.palette = LayerPalette.warm,
   });
 
@@ -39,6 +40,11 @@ class EnvironmentalLayer {
   /// Tile image format — science layers are usually `png` (with transparency),
   /// true-colour imagery is `jpeg`.
   final String gibsFormat;
+
+  /// True for monthly-composite products (e.g. NDVI). Their current-month tiles
+  /// aren't published until the month closes, so the tile date is snapped back
+  /// to a completed, available month.
+  final bool gibsMonthly;
 
   final LayerPalette palette;
 }

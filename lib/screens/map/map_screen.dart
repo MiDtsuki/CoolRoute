@@ -302,6 +302,7 @@ class _MapScreenState extends State<MapScreen> {
       final counted = await ReportService().verifyReport(zone.id, uid);
       if (counted) {
         await UserProfileService().incrementVerifiedReportCount(uid);
+        notifyProfileChanged();
         messenger.showSnackBar(
           const SnackBar(
             content: Text('Thanks — your verification was recorded.'),

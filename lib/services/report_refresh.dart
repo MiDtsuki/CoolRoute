@@ -16,3 +16,9 @@ void notifyCoolSpotsChanged() => coolSpotRevision.value++;
 final ValueNotifier<int> treeEventRevision = ValueNotifier<int>(0);
 
 void notifyTreeEventsChanged() => treeEventRevision.value++;
+
+/// Bumped when the signed-in user's profile changes (saved routes, stat
+/// counters) so the Profile tab can reload without a manual refresh.
+final ValueNotifier<int> profileRevision = ValueNotifier<int>(0);
+
+void notifyProfileChanged() => profileRevision.value++;

@@ -189,6 +189,7 @@ class _CreateHotZoneReportScreenState extends State<CreateHotZoneReportScreen> {
       );
       if (uid != null) {
         await UserProfileService().incrementReportCount(uid);
+        notifyProfileChanged();
       }
       // Tell Map + Home to reload so this report shows up there too.
       notifyHotZonesChanged();

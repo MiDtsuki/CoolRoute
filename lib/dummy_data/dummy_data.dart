@@ -24,9 +24,9 @@ class DummyData {
     location: 'Bangkok, Thailand',
     riskProfile: 'Normal',
     savedRoutes: [
-      'Dormitory to Library',
-      'Main Gate to Cafeteria',
-      'Library to Bus Stop',
+      SavedRoute(name: 'Dormitory to Library'),
+      SavedRoute(name: 'Main Gate to Cafeteria'),
+      SavedRoute(name: 'Library to Bus Stop'),
     ],
     reportCount: 5,
     verifiedReportCount: 18,
@@ -303,6 +303,18 @@ class DummyData {
       blurb: 'What the heat actually feels like once humidity is added to air '
           'temperature — the real comfort and risk level.',
       gibsLayerId: 'MODIS_Terra_Land_Surface_Temp_Day',
+    ),
+    EnvironmentalLayer(
+      name: 'Vegetation (NDVI)',
+      source: 'NASA MODIS Terra · monthly',
+      status: 'Greener = more vegetation',
+      value: 'Live',
+      blurb: 'Vegetation greenness. Sparse, low-NDVI areas are the best targets '
+          'for community tree-planting events.',
+      gibsLayerId: 'MODIS_Terra_L3_NDVI_Monthly',
+      gibsMaxZoom: 7,
+      gibsMonthly: true,
+      palette: LayerPalette.cool,
     ),
   ];
 }

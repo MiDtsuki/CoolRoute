@@ -5,17 +5,29 @@ import 'package:pointer_interceptor/pointer_interceptor.dart';
 import '../../models/heat_risk.dart';
 import '../../models/hot_zone_report.dart';
 import '../../models/route_option.dart';
+import '../../models/user_profile.dart';
+import '../../services/firebase_auth_service.dart';
 import '../../services/location_service.dart';
+import '../../services/report_refresh.dart';
 import '../../services/report_service.dart';
 import '../../services/route_planner.dart';
 import '../../services/routing_service.dart';
+import '../../services/user_profile_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/route_map.dart';
 
 class RouteScreen extends StatefulWidget {
-  const RouteScreen({super.key, this.initialSelectedRouteName});
+  const RouteScreen({
+    super.key,
+    this.initialSelectedRouteName,
+    this.initialDestination,
+  });
 
   final String? initialSelectedRouteName;
+
+  /// When set (e.g. reopening a saved route), the screen plans to this
+  /// destination as soon as the start location resolves.
+  final LatLng? initialDestination;
 
   @override
   State<RouteScreen> createState() => _RouteScreenState();
@@ -40,10 +52,13 @@ class _RouteScreenState extends State<RouteScreen> {
   @override
   void initState() {
     super.initState();
+    _destination = widget.initialDestination;
+    final name = widget.initialSelectedRouteName;
+    if (name != null) _searchCtrl.text = name;
     _resolveStart();
     _loadHotZones();
-    final name = widget.initialSelectedRouteName;
-    if (name != null) {
+    // A saved route with no stored coordinates (legacy) can't be re-planned.
+    if (name != null && widget.initialDestination == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
@@ -66,6 +81,8 @@ class _RouteScreenState extends State<RouteScreen> {
       _start = LatLng(result.latitude, result.longitude);
       _locating = false;
     });
+    // Reopened a saved route → plan it now that we have a start point.
+    if (_destination != null && _routes.isEmpty) _findRoutes();
   }
 
   Future<void> _loadHotZones() async {
@@ -168,6 +185,49 @@ class _RouteScreenState extends State<RouteScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Navigation started on the ${route.name.toLowerCase()}.')),
     );
+  }
+
+  String? _currentUid() {
+    try {
+      return FirebaseAuthService().currentUser?.uid;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  // Saves the selected route to the user's profile (Profile → Saved routes),
+  // including the destination so it can be re-planned when reopened.
+  Future<void> _saveRoute() async {
+    final route = _selected;
+    final destination = _destination;
+    if (route == null || destination == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final uid = _currentUid();
+    if (uid == null) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Sign in to save routes.')),
+      );
+      return;
+    }
+    final dest = _searchCtrl.text.trim();
+    final name =
+        '${route.name} to ${dest.isEmpty ? 'destination' : dest} · ${route.duration}';
+    messenger.showSnackBar(
+      const SnackBar(content: Text('Saved to your profile.')),
+    );
+    try {
+      await UserProfileService().addSavedRoute(
+        uid,
+        SavedRoute(
+          name: name,
+          destLat: destination.latitude,
+          destLng: destination.longitude,
+        ),
+      );
+      notifyProfileChanged();
+    } catch (e) {
+      debugPrint('VERIFY: save route error: $e');
+    }
   }
 
   void _showKeyNeeded() {
@@ -486,14 +546,30 @@ class _RoutePanel extends StatelessWidget {
           ),
           Padding(
             padding: const EdgeInsets.all(AppTheme.spaceMD),
-            child: SizedBox(
-              width: double.infinity,
-              height: 46,
-              child: FilledButton.icon(
-                onPressed: state._selected == null ? null : state._startRoute,
-                icon: const Icon(Icons.navigation, size: 18),
-                label: const Text('Start'),
-              ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 46,
+                    child: OutlinedButton.icon(
+                      onPressed: state._selected == null ? null : state._saveRoute,
+                      icon: const Icon(Icons.bookmark_add_outlined, size: 18),
+                      label: const Text('Save'),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: AppTheme.spaceSM),
+                Expanded(
+                  child: SizedBox(
+                    height: 46,
+                    child: FilledButton.icon(
+                      onPressed: state._selected == null ? null : state._startRoute,
+                      icon: const Icon(Icons.navigation, size: 18),
+                      label: const Text('Start'),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],

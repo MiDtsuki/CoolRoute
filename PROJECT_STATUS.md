@@ -54,13 +54,13 @@ Keys live in `.env` (gitignored — never committed). Firebase provider toggles 
 - [x] Real walking routes (OpenRouteService) with geocoding search + tap-to-pick destination
 - [x] Heat scoring: routes scored by proximity to reported hot zones; coolest = "Recommended"
 - [x] Route drawn as a polyline on the map with start/destination + hot-zone markers
-- [ ] *(follow-up)* factor cool spots / shade into scoring; turn-by-turn steps; save a planned route
+- [ ] *(follow-up)* factor cool spots / shade into scoring; turn-by-turn steps
 
 **P2 — community + climate depth**
 - [x] Tree-planting events (create · RSVP · water · donate · attend) — Firestore-backed
 - [x] NDVI vegetation layer in the Data viewer
 - [x] Profile + saved-routes screen (core)
-- [ ] Persist saved routes from the Route tab (`addSavedRoute`)
+- [x] Persist saved routes from the Route tab (`addSavedRoute`) + remove from Profile
 
 **P3 — housekeeping**
 - [x] API keys in `.env`, Anonymous auth enabled
@@ -119,7 +119,7 @@ Remaining gaps are mostly P2: tree-planting events, an NDVI layer, and persisted
 | Community Verification | ✅ (core) | "Still hot" / "Problem fixed" now call `ReportService.verifyReport(id)` (optimistic count bump + persist) and credit the verifier's `verifiedReportCount`. Follow-up: per-user "already verified" guard and the richer option set (shade available / water working / not accurate). |
 | Cool Spot Finder | ✅ | Real data + filters (Water / Shade / Air-conditioned / Open Now) on the Map. "Verified" filter exists on the (orphaned) standalone screen. |
 | NASA Environmental Data Viewer | ✅ | 7 layers as a live tiled WMTS map (see NASA GIBS row) with per-layer blurbs: Land Surface Temp, Sea Surface Temp, Cloud Cover, Aerosol/Air Quality, UV/Ozone, Weather Heat Index, and **Vegetation (NDVI)** — the spec's planting-zone layer (sparse = plant here). NDVI is a monthly composite, so its tile date is snapped back to a published month. |
-| Profile and Saved Routes | ✅ (core) | **Profile is now a live 5th tab.** `profile_screen.dart` loads the signed-in user's profile via `UserProfileService.getCurrentUserProfile()` (Firestore `users/{uid}`, auto-created on first load), shows contribution stats (reports / verifications / saved routes) + account type (guest vs email), and supports **editing** name/role/home-area/heat-sensitivity (persists via `updateProfile`) and **sign out** (mobile had none before). Falls back to dummy if Firebase is down. *Still TODO: stats counters (`reportCount`/`verifiedReportCount`) aren't incremented yet because reports/verification don't persist (P0); saved routes aren't written yet (needs `addSavedRoute` wired from the Route tab).* |
+| Profile and Saved Routes | ✅ | **Profile is a live 5th tab; saved routes now persist.** `profile_screen.dart` loads the signed-in user's profile via `UserProfileService.getCurrentUserProfile()` (Firestore `users/{uid}`, auto-created on first load), shows contribution stats (reports / verifications / saved routes) + account type (guest vs email), and supports **editing** name/role/home-area/heat-sensitivity (persists via `updateProfile`) and **sign out** (mobile had none before). Falls back to dummy if Firebase is down. Stat counters increment on report/verify; **saved routes persist** with their destination coordinates (Save on the Route tab, remove from here) and **reopening replans** the route. The tab now **auto-refreshes** via a `profileRevision` signal (manual refresh icon still there). |
 | Tree-Planting Events | ✅ (core) | Posted from the Map's Report sheet (the spec's "Reports tab" surface). `TreeEvent`-backed (`TreePin` model extended) Firestore `treeEvents`: title, when, goal, organizer, description, location. Contributions (RSVP / water / donate / attend) are one-per-user via `TreeEventService.contribute` transaction; buttons show counts and disable once joined. *Follow-up:* a dedicated Reports/Community list view; NDVI overlay. |
 
 ---
@@ -189,9 +189,10 @@ pattern; keep everything **web-safe** (no `dart:io`).
    vs. extending the current report chooser.
 6. **NDVI vegetation layer.** Add an NDVI GIBS layer to `DummyData.layers` and surface
    low-vegetation areas as candidate planting zones (ties into #5).
-7. ✅ **DONE (core)** — Profile is a live 5th tab backed by `UserProfileService` + Firestore
-   `users/{uid}`, with edit + sign out. Still TODO: persist saved routes from the Route tab
-   (`addSavedRoute`) and increment stat counters once reports/verification persist (P0).
+7. ✅ **DONE** — Profile is a live 5th tab backed by `UserProfileService` + Firestore
+   `users/{uid}`, with edit + sign out. Saved routes now persist (Save on the Route tab →
+   `addSavedRoute`; remove from Profile → `removeSavedRoute`); stat counters increment on
+   report/verify.
 
 ### P3 — config / housekeeping
 8. ✅ **DONE** — Real API keys added to `.env` (`GOOGLE_MAPS_API_KEY`, `WEATHER_API_KEY`) and
@@ -219,6 +220,19 @@ falls back to the dummy-data prototype path if not configured. `flutter analyze`
 
 Newest first. Dates are absolute.
 
+- **2026-06-05** — **Saved-routes fixes (from testing).** Reopening a saved route showed an empty
+  map because only the route *name* was stored. Now a `SavedRoute {name, destLat, destLng}` model
+  stores the destination; `UserProfile.savedRoutes` is `List<SavedRoute>` (back-compatible with
+  legacy string entries), and reopening passes the coords to `RouteScreen.initialDestination` which
+  **replans automatically** once the start resolves. Added a `profileRevision` signal so the
+  Profile tab **auto-refreshes** after save/remove/report/verify (no manual tap needed).
+  `flutter analyze` clean. *(Uncommitted.)*
+- **2026-06-04** — **Persist saved routes (last core P2 item).** The Route panel got a **Save**
+  button (next to Start) that writes the selected route to the user's profile via
+  `UserProfileService.addSavedRoute` (now set+merge so it works pre-doc-creation). Saved routes
+  show under Profile → Saved routes, each with a **delete** that calls `removeSavedRoute`
+  (optimistic). The saved name captures the route type + destination + duration. `flutter analyze`
+  clean. *(Uncommitted.)*
 - **2026-06-04** — *Note:* the Data tab logs many `HTTP 404` lines for `Coastlines_15m` and the
   land-only layers (LST/NDVI). These are **benign** — those GIBS layers are sparse and have no
   tiles over ocean/empty areas, so NASA 404s there while the map still renders correctly. Logged
