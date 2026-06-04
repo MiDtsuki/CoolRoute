@@ -1,7 +1,5 @@
 import 'dart:async';
-import 'dart:math' as math;
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -9,6 +7,7 @@ import '../../models/environmental_layer.dart';
 import '../../services/environmental_data_service.dart';
 import '../../services/nasa_gibs_service.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/gibs_tile_map.dart';
 import '../../widgets/layer_chip_bar.dart';
 
 class EnvironmentalDataScreen extends StatefulWidget {
@@ -335,8 +334,10 @@ class _VizPanel extends StatelessWidget {
         if (gibsId == null)
           fallback
         else
-          _GibsViewer(
-            url: gibs.snapshotUrl(layerId: gibsId, date: date),
+          GibsTileMap(
+            layer: layer,
+            date: date,
+            gibs: gibs,
             fallback: fallback,
           ),
         const IgnorePointer(
@@ -392,89 +393,6 @@ class _VizPanel extends StatelessWidget {
   }
 }
 
-// ── Interactive GIBS viewer ───────────────────────────────────────────────────
-
-/// Wraps the GIBS snapshot in an [InteractiveViewer] that lets the user
-/// freely pan and pinch-zoom across the globe.
-///
-/// The canvas is sized to fully cover the viewport at scale 1.0 in *both*
-/// dimensions (cover-fit math derived from the image's 2:1 aspect ratio),
-/// then horizontally centered on first frame. Combined with [minScale] 1.0
-/// and [boundaryMargin] zero, this guarantees the map always fills the
-/// viewport — no letterboxing, no dead space — at every scale and pan
-/// position. Adapts automatically to phone / tablet / web breakpoints
-/// via [LayoutBuilder].
-class _GibsViewer extends StatefulWidget {
-  const _GibsViewer({required this.url, required this.fallback});
-
-  final String url;
-  final Widget fallback;
-
-  @override
-  State<_GibsViewer> createState() => _GibsViewerState();
-}
-
-class _GibsViewerState extends State<_GibsViewer> {
-  final _controller = TransformationController();
-  Size? _centeredFor;
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _centerIfNeeded(Size viewport, Size canvas) {
-    if (_centeredFor == viewport) return;
-    _centeredFor = viewport;
-    final dx = (viewport.width - canvas.width) / 2;
-    final dy = (viewport.height - canvas.height) / 2;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _controller.value = Matrix4.identity()..translateByDouble(dx, dy, 0, 1);
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final viewport = Size(constraints.maxWidth, constraints.maxHeight);
-        // Cover-fit a 2:1 image into the viewport. Whichever scale value
-        // (height-cover vs width-cover) is larger wins — that guarantees
-        // both dimensions of the viewport are covered at scale 1.0,
-        // regardless of phone / tablet / desktop orientation.
-        final canvasH = math.max(viewport.height, viewport.width / 2);
-        final canvasW = canvasH * 2;
-        final canvas = Size(canvasW, canvasH);
-
-        _centerIfNeeded(viewport, canvas);
-
-        return InteractiveViewer(
-          transformationController: _controller,
-          constrained: false,
-          boundaryMargin: EdgeInsets.zero,
-          minScale: 1.0,
-          maxScale: 5.0,
-          panEnabled: true,
-          scaleEnabled: true,
-          child: SizedBox(
-            width: canvasW,
-            height: canvasH,
-            child: CachedNetworkImage(
-              imageUrl: widget.url,
-              fit: BoxFit.fill,
-              placeholder: (_, _) => widget.fallback,
-              errorWidget: (_, _, _) => widget.fallback,
-              fadeInDuration: const Duration(milliseconds: 250),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
 // ── Info panel ────────────────────────────────────────────────────────────────
 
 class _InfoPanel extends StatelessWidget {
@@ -505,14 +423,39 @@ class _InfoPanel extends StatelessWidget {
                           .copyWith(color: AppTheme.primary)),
                 ),
                 const SizedBox(width: AppTheme.spaceSM),
-                Text(layer.value,
-                    style: tt.headlineSmall!
-                        .copyWith(color: AppTheme.textOnDark)),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(layer.value,
+                        style: tt.headlineSmall!
+                            .copyWith(color: AppTheme.textOnDark)),
+                    Text('typical',
+                        style: tt.labelSmall!
+                            .copyWith(color: AppTheme.textOnDarkDim)),
+                  ],
+                ),
               ],
             ),
             const SizedBox(height: 4),
             Text(layer.status,
                 style: tt.bodyMedium!.copyWith(color: AppTheme.textOnDarkMid)),
+            const SizedBox(height: AppTheme.spaceSM),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.info_outline,
+                    size: 14, color: AppTheme.textOnDarkDim),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    layer.blurb,
+                    style: tt.bodySmall!
+                        .copyWith(color: AppTheme.textOnDarkDim, height: 1.35),
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: AppTheme.spaceXS + 2),
             Row(
               children: [
@@ -524,6 +467,16 @@ class _InfoPanel extends StatelessWidget {
                   style: tt.labelSmall!.copyWith(color: AppTheme.textOnDarkDim),
                 ),
               ],
+            ),
+            const SizedBox(height: AppTheme.spaceSM),
+            Text(
+              'The map imagery is live NASA GIBS data for the selected date. '
+              'The value above is a representative reading for Bangkok, not a '
+              'per-date measurement.',
+              style: tt.labelSmall!.copyWith(
+                  color: AppTheme.textOnDarkDim,
+                  height: 1.35,
+                  fontStyle: FontStyle.italic),
             ),
             const SizedBox(height: AppTheme.spaceMD),
             const _LegendBar(),
