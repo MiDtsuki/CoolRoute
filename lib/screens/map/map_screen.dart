@@ -4,7 +4,6 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:pointer_interceptor/pointer_interceptor.dart';
 
 import '../../data/dummy_tree_pins.dart';
-import '../../dummy_data/dummy_data.dart';
 import '../../models/cool_spot.dart';
 import '../../models/heat_risk.dart';
 import '../../models/hot_zone_report.dart';
@@ -54,19 +53,26 @@ class _MapScreenState extends State<MapScreen> {
   // sheet can drag almost all the way down yet still be grabbed to reopen.
   static const double _listSheetMinHeight = 72;
 
-  // Real, location-based cool spots. Seeded with local data so the screen has
-  // content immediately; replaced with live OpenStreetMap results once the
-  // user's location resolves.
-  List<CoolSpot> _coolSpots = DummyData.coolSpots;
+  // Off-screen placeholder — only used when _selectedZone is null and the
+  // HotZoneBottomSheet is fully animated out of view.
+  static const _kEmptyZone = HotZoneReport(
+    title: '',
+    location: '',
+    category: '',
+    description: '',
+    timeAgo: '',
+    verifications: 0,
+    risk: HeatRisk.low,
+    x: 0.5,
+    y: 0.5,
+  );
+
+  List<CoolSpot> _coolSpots = const [];
   bool _loadingSpots = false;
 
-  // Hot zones shown on the map. Seeded with local data for instant content,
-  // then replaced with live Firestore reports. Mutable so freshly reported
-  // (pending) zones can be appended without a backend round-trip.
-  List<HotZoneReport> _hotZones = List.of(DummyData.hotZones);
+  List<HotZoneReport> _hotZones = const [];
 
-  // Nearby reports shown in the detail panel; replaced with live data on load.
-  List<NearbyReport> _nearbyReports = DummyData.nearbyReports.take(3).toList();
+  List<NearbyReport> _nearbyReports = const [];
 
   // Community tree-planting events (Trees filter). Seeded with dummy, replaced
   // with live Firestore events. Mutable so a freshly created event shows at once.
@@ -331,6 +337,78 @@ class _MapScreenState extends State<MapScreen> {
     }
   }
 
+  // "Problem fixed" — adds uid to resolvedBy. If 3 users resolve, the report
+  // is deleted from Firestore and removed from the map immediately.
+  Future<void> _onResolveZone(HotZoneReport zone) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final uid = _currentUid();
+    if (uid == null) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Sign in to verify reports.')),
+      );
+      return;
+    }
+    if (zone.isResolvedBy(uid)) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('You already marked this as resolved.')),
+      );
+      return;
+    }
+
+    // Optimistic: record self in resolvedBy so the button disables immediately.
+    void replace(HotZoneReport r) {
+      final i = _hotZones.indexWhere((z) => z.id == zone.id);
+      if (i != -1) _hotZones[i] = r;
+      if (_selectedZone?.id == zone.id) _selectedZone = r;
+    }
+
+    setState(() => replace(
+          zone.copyWith(resolvedBy: [...zone.resolvedBy, uid]),
+        ));
+
+    try {
+      final counted = await ReportService().resolveReport(zone.id, uid);
+      if (!mounted) return;
+
+      final newCount = zone.resolvedBy.length + 1;
+      if (newCount >= 3) {
+        // Report was deleted — remove from local list and dismiss panel.
+        setState(() {
+          _hotZones.removeWhere((z) => z.id == zone.id);
+          if (_selectedZone?.id == zone.id) {
+            _selectedZone = null;
+            _selectedTree = null;
+          }
+        });
+        notifyHotZonesChanged();
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text('Report resolved — removed from the map.'),
+          ),
+        );
+      } else if (counted) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              'Marked as resolved. ${3 - newCount} more needed to remove.',
+            ),
+          ),
+        );
+      } else {
+        setState(() => replace(zone));
+        messenger.showSnackBar(
+          const SnackBar(content: Text('You already marked this as resolved.')),
+        );
+      }
+    } catch (e) {
+      setState(() => replace(zone));
+      debugPrint('VERIFY: resolve error: $e');
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not record resolution. Try again.')),
+      );
+    }
+  }
+
   String? _currentUid() {
     try {
       return FirebaseAuthService().currentUser?.uid;
@@ -379,7 +457,7 @@ class _MapScreenState extends State<MapScreen> {
     final community = await _loadCommunitySpots(lat, lng);
     if (!mounted) return;
     setState(() {
-      final base = osm.isNotEmpty ? osm : DummyData.coolSpots;
+      final base = osm;
       // Community suggestions first so a freshly added spot is easy to find.
       _coolSpots = [...community, ...base];
       // Drop a stale focus that's no longer in the refreshed list.
@@ -711,8 +789,10 @@ class _MapScreenState extends State<MapScreen> {
                     report: _selectedZone!,
                     nearbyReports: _nearby,
                     onClose: _onDismiss,
-                    onVerify: _onVerifyZone,
+                    onStillHot: _onVerifyZone,
+                    onResolve: _onResolveZone,
                     alreadyVerified: _selectedZone!.isVerifiedBy(_currentUid()),
+                    alreadyResolved: _selectedZone!.isResolvedBy(_currentUid()),
                   )
                 : _selectedTree != null
                 ? _TreePinSidePanel(
@@ -755,12 +835,15 @@ class _MapScreenState extends State<MapScreen> {
             child: IgnorePointer(
               ignoring: !hotZoneSheetVisible,
               child: HotZoneBottomSheet(
-                report: _selectedZone ?? DummyData.hotZones.first,
+                report: _selectedZone ?? _kEmptyZone,
                 nearbyReports: _nearby,
                 onClose: _onDismiss,
-                onVerify: _onVerifyZone,
-                alreadyVerified: (_selectedZone ?? DummyData.hotZones.first)
+                onStillHot: _onVerifyZone,
+                onResolve: _onResolveZone,
+                alreadyVerified: (_selectedZone ?? _kEmptyZone)
                     .isVerifiedBy(_currentUid()),
+                alreadyResolved: (_selectedZone ?? _kEmptyZone)
+                    .isResolvedBy(_currentUid()),
               ),
             ),
           ),

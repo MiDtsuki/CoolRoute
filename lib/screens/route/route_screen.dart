@@ -38,6 +38,7 @@ class _RouteScreenState extends State<RouteScreen> {
   final RoutingService _routing = RoutingService();
 
   LatLng? _start;
+  bool _startIsReal = false;
   LatLng? _destination;
 
   List<HotZoneReport> _hotZones = const [];
@@ -79,6 +80,7 @@ class _RouteScreenState extends State<RouteScreen> {
     if (!mounted) return;
     setState(() {
       _start = LatLng(result.latitude, result.longitude);
+      _startIsReal = result.isReal;
       _locating = false;
     });
     // Reopened a saved route → plan it now that we have a start point.
@@ -345,8 +347,16 @@ class _DirectionsBar extends StatelessWidget {
             const SizedBox(width: AppTheme.spaceSM + 2),
             Expanded(
               child: Text(
-                state._locating ? 'Locating…' : 'Your location',
-                style: tt.bodyMedium!.copyWith(color: AppTheme.textPrimary),
+                state._locating
+                    ? 'Locating…'
+                    : state._startIsReal
+                        ? 'Your location'
+                        : 'Bangkok (location unavailable)',
+                style: tt.bodyMedium!.copyWith(
+                  color: state._locating || state._startIsReal
+                      ? AppTheme.textPrimary
+                      : AppTheme.riskMedium,
+                ),
               ),
             ),
           ],
@@ -624,9 +634,12 @@ class _RouteRow extends StatelessWidget {
         HeatRisk.low => AppTheme.riskNone,
       };
 
+  bool get _isFastest => route.name == 'Fastest route';
+
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
+    final hotCount = route.hotZonesNearby;
     return InkWell(
       onTap: onTap,
       child: Container(
@@ -659,23 +672,29 @@ class _RouteRow extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Route name label
+                  Text(route.name,
+                      style: tt.labelSmall!.copyWith(color: AppTheme.textSecondary)),
+                  const SizedBox(height: 1),
+                  // Duration + distance + badges row
                   Row(
                     children: [
                       Text(route.duration,
                           style: tt.headlineMedium!.copyWith(fontWeight: FontWeight.w700)),
                       const SizedBox(width: AppTheme.spaceSM),
                       Text(route.distance, style: tt.bodySmall),
-                      if (route.badge != null) ...[
-                        const SizedBox(width: AppTheme.spaceSM),
-                        _Badge(route.badge!),
-                      ],
+                      const SizedBox(width: AppTheme.spaceSM),
+                      if (route.badge != null) _Badge(label: route.badge!, color: AppTheme.primaryLight, textColor: AppTheme.primaryDark),
+                      if (_isFastest) _Badge(label: 'Fastest', color: AppTheme.riskMediumBg, textColor: const Color(0xFF854F0B)),
                     ],
                   ),
-                  const SizedBox(height: 2),
-                  Text(route.summary,
-                      style: tt.bodySmall!.copyWith(color: AppTheme.textSecondary),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
+                  const SizedBox(height: 3),
+                  // Hot-zone count pill
+                  Row(
+                    children: [
+                      _HotZonePill(count: hotCount),
+                    ],
+                  ),
                 ],
               ),
             ),
@@ -689,13 +708,15 @@ class _RouteRow extends StatelessWidget {
 }
 
 class _Badge extends StatelessWidget {
-  const _Badge(this.label);
+  const _Badge({required this.label, required this.color, required this.textColor});
   final String label;
+  final Color color;
+  final Color textColor;
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        color: AppTheme.primaryLight,
+        color: color,
         borderRadius: BorderRadius.circular(AppTheme.radiusPill),
       ),
       child: Padding(
@@ -704,7 +725,41 @@ class _Badge extends StatelessWidget {
             style: Theme.of(context)
                 .textTheme
                 .labelSmall!
-                .copyWith(color: AppTheme.primaryDark)),
+                .copyWith(color: textColor)),
+      ),
+    );
+  }
+}
+
+class _HotZonePill extends StatelessWidget {
+  const _HotZonePill({required this.count});
+  final int count;
+  @override
+  Widget build(BuildContext context) {
+    final isClean = count == 0;
+    final bg = isClean ? AppTheme.riskLowBg : AppTheme.riskExtremeBg;
+    final fg = isClean ? AppTheme.riskNone : AppTheme.riskExtreme;
+    final label = isClean ? 'No hot zones' : '$count hot zone${count == 1 ? '' : 's'}';
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(AppTheme.radiusPill),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(isClean ? Icons.check_circle_outline : Icons.local_fire_department,
+                size: 11, color: fg),
+            const SizedBox(width: 3),
+            Text(label,
+                style: Theme.of(context)
+                    .textTheme
+                    .labelSmall!
+                    .copyWith(color: fg)),
+          ],
+        ),
       ),
     );
   }

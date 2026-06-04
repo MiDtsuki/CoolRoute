@@ -58,6 +58,26 @@ class TreeEventService {
     return ref.id;
   }
 
+  /// Returns tree events created by [uid], ordered newest first.
+  Future<List<TreePin>> getUserTreeEvents(String uid) async {
+    try {
+      final snapshot = await _db
+          .collection('treeEvents')
+          .where('userId', isEqualTo: uid)
+          .orderBy('createdAt', descending: true)
+          .get();
+      return snapshot.docs
+          .map((doc) => TreePin.fromMap(doc.data(), doc.id))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  /// Deletes a tree event the current user owns.
+  Future<void> deleteTreeEvent(String id) =>
+      _db.collection('treeEvents').doc(id).delete();
+
   /// Records a contribution by [userId] to [eventId], enforcing **one per user
   /// per action** via a transaction. Returns `true` if newly added, `false` if
   /// the user already contributed that way (or the event no longer exists).

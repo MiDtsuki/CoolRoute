@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../dummy_data/dummy_data.dart';
 import '../../models/heat_risk.dart';
 import '../../models/hot_zone_report.dart';
 import '../../models/weather_info.dart';
@@ -25,8 +24,7 @@ class _HomeScreenState extends State<HomeScreen> {
   late final Future<WeatherInfo> _weatherFuture =
       WeatherService().getCurrentWeather();
 
-  // Live community hot zones from Firestore (seeded with dummy for instant UI).
-  List<HotZoneReport> _hotZones = DummyData.hotZones;
+  List<HotZoneReport> _hotZones = const [];
 
   @override
   void initState() {
@@ -60,12 +58,23 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               FutureBuilder<WeatherInfo>(
                 future: _weatherFuture,
-                initialData: DummyData.weather,
-                builder: (context, snapshot) => _HeroCard(
-                  weather: snapshot.data ?? DummyData.weather,
-                  hotZoneCount: _hotZones.length,
-                  coolSpotCount: DummyData.coolSpots.length,
-                ),
+                builder: (context, snapshot) {
+                  if (!snapshot.hasData) {
+                    return const ColoredBox(
+                      color: AppTheme.bgHero,
+                      child: SizedBox(
+                        height: 180,
+                        child: Center(
+                          child: CircularProgressIndicator(color: AppTheme.primary),
+                        ),
+                      ),
+                    );
+                  }
+                  return _HeroCard(
+                    weather: snapshot.data!,
+                    hotZoneCount: _hotZones.length,
+                  );
+                },
               ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(
@@ -153,12 +162,10 @@ class _HeroCard extends StatelessWidget {
   const _HeroCard({
     required this.weather,
     required this.hotZoneCount,
-    required this.coolSpotCount,
   });
 
   final WeatherInfo weather;
   final int hotZoneCount;
-  final int coolSpotCount;
 
   static String _time() {
     final t = DateTime.now();
@@ -221,8 +228,6 @@ class _HeroCard extends StatelessWidget {
                 _StatBox(value: '${weather.humidity}%', label: 'Humidity'),
                 const SizedBox(width: AppTheme.spaceSM),
                 _StatBox(value: '$hotZoneCount', label: 'Hot zones'),
-                const SizedBox(width: AppTheme.spaceSM),
-                _StatBox(value: '$coolSpotCount', label: 'Cool spots'),
               ],
             ),
           ],
@@ -357,7 +362,7 @@ class _AlertChip extends StatelessWidget {
             const SizedBox(width: 6),
             Text(report.location, style: tt.labelMedium),
             const SizedBox(width: 6),
-            Text(report.timeAgo,
+            Text(report.displayTimeAgo,
                 style: tt.bodySmall!.copyWith(color: AppTheme.textHint)),
           ],
         ),

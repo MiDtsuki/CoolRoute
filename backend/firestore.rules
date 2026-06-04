@@ -2,17 +2,31 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Anyone (including anonymous users) can read hot zones and cool spots
     match /hotZones/{docId} {
       allow read: if true;
       allow create: if request.auth != null
         && request.resource.data.keys().hasAll(['title', 'location', 'risk', 'createdAt'])
         && request.resource.data.title is string
         && request.resource.data.title.size() > 0;
+      // Owner can update editable fields; anyone authed can add a verification
+      // or resolution vote to the appropriate lists.
       allow update: if request.auth != null
-        && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['verifications', 'verifiedBy']);
-      allow delete: if false;
+        && (
+          // Community verification (Still hot / Problem fixed)
+          request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['verifications', 'verifiedBy', 'resolvedBy'])
+          ||
+          // Owner editing their own report's content
+          (resource.data.userId == request.auth.uid
+            && request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['title', 'description', 'category']))
+        );
+      // Owner can delete their own report; community takedown when 3+ resolved.
+      allow delete: if request.auth != null
+        && (
+          resource.data.userId == request.auth.uid
+          || resource.data.resolvedBy.size() >= 3
+        );
     }
 
     match /coolSpots/{docId} {
@@ -24,11 +38,10 @@ service cloud.firestore {
       allow update: if request.auth != null
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['verifiedBy']);
-      allow delete: if false;
+      allow delete: if request.auth != null
+        && resource.data.userId == request.auth.uid;
     }
 
-    // Community tree-planting events — public read; authed create; updates
-    // limited to the contribution lists (RSVP / water / donate / attend).
     match /treeEvents/{docId} {
       allow read: if true;
       allow create: if request.auth != null
@@ -38,7 +51,8 @@ service cloud.firestore {
       allow update: if request.auth != null
         && request.resource.data.diff(resource.data).affectedKeys()
              .hasOnly(['rsvpBy', 'waterBy', 'donateBy', 'attendBy']);
-      allow delete: if false;
+      allow delete: if request.auth != null
+        && resource.data.userId == request.auth.uid;
     }
 
     // Users can only read and write their own profile

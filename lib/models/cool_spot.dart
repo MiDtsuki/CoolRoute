@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class CoolSpot {
   const CoolSpot({
     this.id = '',
@@ -14,6 +16,8 @@ class CoolSpot {
     this.category = '',
     this.source = 'community',
     this.distanceMeters,
+    this.createdAt,
+    this.userId = '',
   });
 
   final String id;
@@ -45,6 +49,12 @@ class CoolSpot {
   /// Raw metres from the user when known (used for sorting).
   final double? distanceMeters;
 
+  /// When this spot was submitted (used for 48-hour auto-expiry on community spots).
+  final DateTime? createdAt;
+
+  /// UID of the user who submitted this spot.
+  final String userId;
+
   bool get hasLatLng => lat != null && lng != null;
 
   /// The label to show as the spot's category — falls back to the marker type.
@@ -65,6 +75,8 @@ class CoolSpot {
       lng: (map['lng'] as num?)?.toDouble(),
       category: map['category'] as String? ?? '',
       source: map['source'] as String? ?? 'community',
+      createdAt: (map['createdAt'] as Timestamp?)?.toDate(),
+      userId: map['userId'] as String? ?? '',
     );
   }
 

@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 import 'heat_risk.dart';
 
 class HotZoneReport {
@@ -15,6 +17,9 @@ class HotZoneReport {
     this.lat,
     this.lng,
     this.verifiedBy = const [],
+    this.resolvedBy = const [],
+    this.createdAt,
+    this.userId = '',
   });
 
   final String id;
@@ -29,6 +34,15 @@ class HotZoneReport {
   /// User ids that have already verified this report (one verification each).
   final List<String> verifiedBy;
 
+  /// User ids that pressed "Problem fixed" — 3 triggers auto-delete.
+  final List<String> resolvedBy;
+
+  /// When this report was created (used for 48-hour auto-expiry).
+  final DateTime? createdAt;
+
+  /// UID of the user who submitted this report.
+  final String userId;
+
   /// Relative position (0–1) used only by the painted fallback map.
   final double x;
   final double y;
@@ -40,11 +54,41 @@ class HotZoneReport {
   bool get hasLatLng => lat != null && lng != null;
 
   bool isVerifiedBy(String? uid) => uid != null && verifiedBy.contains(uid);
+  bool isResolvedBy(String? uid) => uid != null && resolvedBy.contains(uid);
+
+  /// Human-readable relative timestamp computed from [createdAt].
+  /// Falls back to the stored [timeAgo] string for legacy docs without a timestamp.
+  String get displayTimeAgo {
+    final ts = createdAt;
+    if (ts == null) return timeAgo;
+    final diff = DateTime.now().difference(ts);
+    if (diff.inSeconds < 60) return 'just now';
+    if (diff.inMinutes < 60) {
+      final m = diff.inMinutes;
+      return '$m min ago';
+    }
+    if (diff.inHours < 24) {
+      final h = diff.inHours;
+      return '$h ${h == 1 ? 'hr' : 'hrs'} ago';
+    }
+    if (diff.inDays == 1) return 'yesterday';
+    if (diff.inDays < 7) return '${diff.inDays} days ago';
+    // Older than a week — show the date.
+    final months = ['Jan','Feb','Mar','Apr','May','Jun',
+                    'Jul','Aug','Sep','Oct','Nov','Dec'];
+    return '${months[ts.month - 1]} ${ts.day}';
+  }
+
+  bool get isExpired {
+    if (createdAt == null) return false;
+    return DateTime.now().difference(createdAt!) > const Duration(hours: 48);
+  }
 
   HotZoneReport copyWith({
     int? verifications,
     String? timeAgo,
     List<String>? verifiedBy,
+    List<String>? resolvedBy,
   }) {
     return HotZoneReport(
       id: id,
@@ -60,6 +104,9 @@ class HotZoneReport {
       lat: lat,
       lng: lng,
       verifiedBy: verifiedBy ?? this.verifiedBy,
+      resolvedBy: resolvedBy ?? this.resolvedBy,
+      createdAt: createdAt,
+      userId: userId,
     );
   }
 
@@ -78,6 +125,9 @@ class HotZoneReport {
       lat: (map['lat'] as num?)?.toDouble(),
       lng: (map['lng'] as num?)?.toDouble(),
       verifiedBy: List<String>.from(map['verifiedBy'] as List? ?? const []),
+      resolvedBy: List<String>.from(map['resolvedBy'] as List? ?? const []),
+      createdAt: (map['createdAt'] as Timestamp?)?.toDate(),
+      userId: map['userId'] as String? ?? '',
     );
   }
 
@@ -93,5 +143,6 @@ class HotZoneReport {
         'y': y,
         'lat': ?lat,
         'lng': ?lng,
+        'userId': userId,
       };
 }

@@ -5,18 +5,48 @@ import '../models/cool_spot.dart';
 class CoolSpotService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
 
+  static const _expiry = Duration(hours: 48);
+
   Future<List<CoolSpot>> getCoolSpots() async {
     try {
       final snapshot = await _db
           .collection('coolSpots')
-          .orderBy('verifiedBy', descending: true)
+          .orderBy('createdAt', descending: true)
           .get();
       if (snapshot.docs.isEmpty) return DummyData.coolSpots;
+
+      final now = DateTime.now();
+      final spots = <CoolSpot>[];
+      for (final doc in snapshot.docs) {
+        final spot = CoolSpot.fromMap(doc.data(), doc.id);
+        // Only expire community-submitted spots (OSM spots have no createdAt).
+        if (spot.source == 'community' &&
+            spot.createdAt != null &&
+            now.difference(spot.createdAt!) > _expiry) {
+          doc.reference.delete();
+          continue;
+        }
+        spots.add(spot);
+      }
+      return spots;
+    } catch (_) {
+      return DummyData.coolSpots;
+    }
+  }
+
+  /// Returns community cool spots created by [uid], ordered newest first.
+  Future<List<CoolSpot>> getUserCoolSpots(String uid) async {
+    try {
+      final snapshot = await _db
+          .collection('coolSpots')
+          .where('userId', isEqualTo: uid)
+          .orderBy('createdAt', descending: true)
+          .get();
       return snapshot.docs
           .map((doc) => CoolSpot.fromMap(doc.data(), doc.id))
           .toList();
     } catch (_) {
-      return DummyData.coolSpots;
+      return const [];
     }
   }
 
@@ -58,4 +88,8 @@ class CoolSpotService {
       'verifiedBy': FieldValue.increment(1),
     });
   }
+
+  /// Deletes a community cool spot the current user owns.
+  Future<void> deleteCoolSpot(String id) =>
+      _db.collection('coolSpots').doc(id).delete();
 }

@@ -36,6 +36,7 @@ class TreePin {
     this.waterBy = const [],
     this.donateBy = const [],
     this.attendBy = const [],
+    this.userId = '',
   });
 
   final String id;
@@ -53,6 +54,9 @@ class TreePin {
   final double? lat;
   final double? lng;
   final int goalTrees;
+
+  /// UID of the user who created this event.
+  final String userId;
 
   // User ids per contribution type (one contribution per user per type).
   final List<String> rsvpBy;
@@ -104,6 +108,7 @@ class TreePin {
       waterBy: waterBy ?? this.waterBy,
       donateBy: donateBy ?? this.donateBy,
       attendBy: attendBy ?? this.attendBy,
+      userId: userId,
     );
   }
 
@@ -126,6 +131,7 @@ class TreePin {
       waterBy: list('waterBy'),
       donateBy: list('donateBy'),
       attendBy: list('attendBy'),
+      userId: map['userId'] as String? ?? '',
     );
   }
 

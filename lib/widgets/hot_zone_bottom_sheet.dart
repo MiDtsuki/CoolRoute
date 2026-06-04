@@ -12,15 +12,19 @@ class HotZoneBottomSheet extends StatelessWidget {
     required this.report,
     required this.nearbyReports,
     this.onClose,
-    this.onVerify,
+    this.onStillHot,
+    this.onResolve,
     this.alreadyVerified = false,
+    this.alreadyResolved = false,
   });
 
   final HotZoneReport report;
   final List<NearbyReport> nearbyReports;
   final VoidCallback? onClose;
-  final ValueChanged<HotZoneReport>? onVerify;
+  final ValueChanged<HotZoneReport>? onStillHot;
+  final ValueChanged<HotZoneReport>? onResolve;
   final bool alreadyVerified;
+  final bool alreadyResolved;
 
   @override
   Widget build(BuildContext context) {
@@ -68,8 +72,10 @@ class HotZoneBottomSheet extends StatelessWidget {
                 child: ReportPanelContent(
                     report: report,
                     nearbyReports: nearbyReports,
-                    onVerify: onVerify,
-                    alreadyVerified: alreadyVerified),
+                    onStillHot: onStillHot,
+                    onResolve: onResolve,
+                    alreadyVerified: alreadyVerified,
+                    alreadyResolved: alreadyResolved),
               ),
             ),
           ],
@@ -86,14 +92,18 @@ class ReportPanelContent extends StatelessWidget {
     super.key,
     required this.report,
     required this.nearbyReports,
-    this.onVerify,
+    this.onStillHot,
+    this.onResolve,
     this.alreadyVerified = false,
+    this.alreadyResolved = false,
   });
 
   final HotZoneReport report;
   final List<NearbyReport> nearbyReports;
-  final ValueChanged<HotZoneReport>? onVerify;
+  final ValueChanged<HotZoneReport>? onStillHot;
+  final ValueChanged<HotZoneReport>? onResolve;
   final bool alreadyVerified;
+  final bool alreadyResolved;
 
   Color get _riskColor => switch (report.risk) {
         HeatRisk.extreme || HeatRisk.high => AppTheme.riskExtreme,
@@ -145,27 +155,10 @@ class ReportPanelContent extends StatelessWidget {
         const SizedBox(height: AppTheme.spaceMD),
         Text(report.description, style: tt.bodyMedium),
         const SizedBox(height: AppTheme.spaceMD),
-        DecoratedBox(
-          decoration: BoxDecoration(
-            color: AppTheme.bgPage,
-            borderRadius: BorderRadius.circular(AppTheme.radiusMD),
-            border: Border.all(color: AppTheme.borderLight, width: 0.5),
-          ),
-          child: SizedBox(
-            height: 72,
-            width: double.infinity,
-            child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-              const Icon(Icons.camera_alt_outlined, size: 20, color: AppTheme.textHint),
-              const SizedBox(height: 4),
-              Text('No photo yet', style: tt.bodySmall!.copyWith(color: AppTheme.textHint)),
-            ]),
-          ),
-        ),
-        const SizedBox(height: AppTheme.spaceMD),
         Row(children: [
           const Icon(Icons.schedule_outlined, size: 13, color: AppTheme.textHint),
           const SizedBox(width: 4),
-          Text(report.timeAgo, style: tt.bodySmall!.copyWith(color: AppTheme.textHint)),
+          Text(report.displayTimeAgo, style: tt.bodySmall!.copyWith(color: AppTheme.textHint)),
           const SizedBox(width: AppTheme.spaceMD),
           const Icon(Icons.verified_outlined, size: 13, color: AppTheme.textHint),
           const SizedBox(width: 4),
@@ -173,21 +166,27 @@ class ReportPanelContent extends StatelessWidget {
               style: tt.bodySmall!.copyWith(color: AppTheme.textHint)),
         ]),
         const SizedBox(height: AppTheme.spaceMD),
-        if (alreadyVerified) ...[
+        if (alreadyVerified || alreadyResolved) ...[
           Row(children: [
-            const Icon(Icons.check_circle, size: 16, color: AppTheme.primary),
+            Icon(
+              alreadyResolved ? Icons.check_circle : Icons.check_circle,
+              size: 16,
+              color: alreadyResolved ? AppTheme.primary : AppTheme.primary,
+            ),
             const SizedBox(width: 6),
-            Text('You verified this report',
-                style: tt.bodySmall!.copyWith(color: AppTheme.primary)),
+            Text(
+              alreadyResolved ? 'You marked this as resolved' : 'You verified this report',
+              style: tt.bodySmall!.copyWith(color: AppTheme.primary),
+            ),
           ]),
           const SizedBox(height: AppTheme.spaceSM),
         ],
         Row(children: [
           Expanded(
             child: OutlinedButton(
-              onPressed: (onVerify == null || alreadyVerified)
+              onPressed: (onStillHot == null || alreadyVerified || alreadyResolved)
                   ? null
-                  : () => onVerify!(report),
+                  : () => onStillHot!(report),
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppTheme.riskExtreme,
                 side: const BorderSide(color: AppTheme.riskExtreme),
@@ -198,9 +197,9 @@ class ReportPanelContent extends StatelessWidget {
           const SizedBox(width: AppTheme.spaceSM),
           Expanded(
             child: OutlinedButton(
-              onPressed: (onVerify == null || alreadyVerified)
+              onPressed: (onResolve == null || alreadyResolved || alreadyVerified)
                   ? null
-                  : () => onVerify!(report),
+                  : () => onResolve!(report),
               child: const Text('Problem fixed'),
             ),
           ),

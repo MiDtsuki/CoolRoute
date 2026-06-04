@@ -10,6 +10,7 @@ import '../models/heat_risk.dart';
 import '../models/hot_zone_report.dart';
 import '../models/tree_pin.dart';
 import '../theme/app_theme.dart';
+import 'map_marker_icons.dart';
 
 class CoolRouteMap extends StatelessWidget {
   const CoolRouteMap({
@@ -141,6 +142,69 @@ class _GoogleMapViewState extends State<_GoogleMapView> {
 
   GoogleMapController? _controller;
 
+  // Custom pin bitmaps keyed by type string. Built once in initState.
+  final Map<String, BitmapDescriptor> _icons = {};
+
+  @override
+  void initState() {
+    super.initState();
+    _loadIcons();
+  }
+
+  Future<void> _loadIcons() async {
+    final built = await Future.wait([
+      MapMarkerIcons.build(AppTheme.riskExtreme,   Icons.local_fire_department),
+      MapMarkerIcons.build(AppTheme.riskMedium,    Icons.local_fire_department),
+      MapMarkerIcons.build(AppTheme.riskLow,       Icons.local_fire_department),
+      MapMarkerIcons.build(AppTheme.markerBlue,    Icons.water_drop),
+      MapMarkerIcons.build(AppTheme.markerGreen,   Icons.park),
+      MapMarkerIcons.build(AppTheme.primary,       Icons.ac_unit),
+      MapMarkerIcons.build(const Color(0xFF2E7D32), Icons.park),
+    ]);
+    if (!mounted) return;
+    setState(() {
+      _icons['hot-extreme'] = built[0];
+      _icons['hot-medium']  = built[1];
+      _icons['hot-low']     = built[2];
+      _icons['cool-water']  = built[3];
+      _icons['cool-shade']  = built[4];
+      _icons['cool-ac']     = built[5];
+      _icons['tree']        = built[6];
+    });
+  }
+
+  BitmapDescriptor _zoneIcon(HeatRisk risk) {
+    if (_icons.isEmpty) {
+      return BitmapDescriptor.defaultMarkerWithHue(
+        risk == HeatRisk.medium ? BitmapDescriptor.hueOrange : BitmapDescriptor.hueRed,
+      );
+    }
+    return switch (risk) {
+      HeatRisk.extreme || HeatRisk.high => _icons['hot-extreme']!,
+      HeatRisk.medium                   => _icons['hot-medium']!,
+      HeatRisk.low                      => _icons['hot-low']!,
+    };
+  }
+
+  BitmapDescriptor _spotIcon(String type) {
+    if (_icons.isEmpty) {
+      return BitmapDescriptor.defaultMarkerWithHue(
+        type == 'Water' ? BitmapDescriptor.hueAzure
+            : type == 'Shade' ? BitmapDescriptor.hueGreen
+            : BitmapDescriptor.hueCyan,
+      );
+    }
+    return switch (type) {
+      'Water' => _icons['cool-water']!,
+      'Shade' => _icons['cool-shade']!,
+      _       => _icons['cool-ac']!,
+    };
+  }
+
+  BitmapDescriptor get _treeIcon =>
+      _icons['tree'] ??
+      BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen);
+
   // Markers and the radius circle are anchored to the user's location when
   // known, otherwise the default city centre.
   LatLng get _anchor => widget.userLocation ?? _bangkok;
@@ -218,9 +282,7 @@ class _GoogleMapViewState extends State<_GoogleMapView> {
         Marker(
           markerId: MarkerId('hot-zone-${report.title}'),
           position: _zonePosition(report),
-          icon: BitmapDescriptor.defaultMarkerWithHue(
-            report.risk == HeatRisk.medium ? BitmapDescriptor.hueOrange : BitmapDescriptor.hueRed,
-          ),
+          icon: _zoneIcon(report.risk),
           infoWindow: InfoWindow(title: report.title, snippet: report.location),
           onTap: () => widget.onHotZoneTap?.call(report),
         ),
@@ -232,7 +294,7 @@ class _GoogleMapViewState extends State<_GoogleMapView> {
         Marker(
           markerId: _spotMarkerId(spot),
           position: _spotPosition(spot),
-          icon: BitmapDescriptor.defaultMarkerWithHue(_spotHue(spot.type)),
+          icon: _spotIcon(spot.type),
           infoWindow: InfoWindow(
             title: spot.name,
             snippet: '${spot.displayCategory} · ${spot.distance}',
@@ -250,7 +312,7 @@ class _GoogleMapViewState extends State<_GoogleMapView> {
           position: tree.hasLatLng
               ? LatLng(tree.lat!, tree.lng!)
               : _positionFromOffset(tree.x, tree.y),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
+          icon: _treeIcon,
           infoWindow: InfoWindow(title: tree.title, snippet: tree.locationName),
           onTap: () => widget.onTreePinTap?.call(tree),
         ),
@@ -292,14 +354,6 @@ class _GoogleMapViewState extends State<_GoogleMapView> {
       compassEnabled: false,
     );
   }
-
-  // Cool-spot marker colour, on-theme: water = blue, shade/park = green,
-  // air-conditioned/indoor = cyan.
-  static double _spotHue(String type) => switch (type) {
-        'Water' => BitmapDescriptor.hueAzure,
-        'Shade' => BitmapDescriptor.hueGreen,
-        _ => BitmapDescriptor.hueCyan,
-      };
 
   LatLng _positionFromOffset(double x, double y) {
     const latSpan = .018;

@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_card.dart';
 import '../auth/login_screen.dart';
-import '../shell/app_shell.dart';
 
 class WelcomeScreen extends StatelessWidget {
   const WelcomeScreen({super.key});
@@ -61,18 +60,6 @@ class WelcomeScreen extends StatelessWidget {
                                 );
                               },
                               child: const Text('Get started'),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          SizedBox(
-                            width: double.infinity,
-                            child: OutlinedButton(
-                              onPressed: () {
-                                Navigator.of(context).pushReplacement(
-                                  MaterialPageRoute<void>(builder: (_) => const AppShell()),
-                                );
-                              },
-                              child: const Text('Continue as prototype user'),
                             ),
                           ),
                         ],

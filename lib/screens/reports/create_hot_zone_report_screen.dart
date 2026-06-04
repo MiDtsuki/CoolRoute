@@ -128,8 +128,6 @@ class _CreateHotZoneReportScreenState extends State<CreateHotZoneReportScreen> {
                             ),
                             validator: _required,
                           ),
-                          const SizedBox(height: 14),
-                          _ImageUploadPlaceholder(heatLevel: _heatLevel),
                           const SizedBox(height: 18),
                           SizedBox(
                             width: double.infinity,
@@ -216,46 +214,4 @@ class _CreateHotZoneReportScreenState extends State<CreateHotZoneReportScreen> {
       return null;
     }
   }
-}
-
-class _ImageUploadPlaceholder extends StatelessWidget {
-  const _ImageUploadPlaceholder({required this.heatLevel});
-
-  final HeatRisk heatLevel;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceSoft,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        children: [
-          CircleAvatar(
-            radius: 28,
-            backgroundColor: _riskColor.withValues(alpha: .12),
-            child: Icon(Icons.add_photo_alternate_outlined, color: _riskColor),
-          ),
-          const SizedBox(height: 10),
-          const Text('Add report photo', style: TextStyle(fontWeight: FontWeight.w900)),
-          const SizedBox(height: 4),
-          const Text(
-            'Image upload placeholder for prototype',
-            style: TextStyle(color: AppColors.textSecondary),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Color get _riskColor => switch (heatLevel) {
-        HeatRisk.low => AppColors.safe,
-        HeatRisk.medium => AppColors.moderate,
-        HeatRisk.high => AppColors.high,
-        HeatRisk.extreme => AppColors.extreme,
-      };
 }

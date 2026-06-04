@@ -768,22 +768,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.8"
-  posix:
-    dependency: transitive
-    description:
-      name: posix
-      sha256: "185ef7606574f789b40f289c233efa52e96dead518aed988e040a10737febb07"
-      url: "https://pub.dev"
-    source: hosted
-    version: "6.5.0"
-  proj4dart:
-    dependency: transitive
-    description:
-      name: proj4dart
-      sha256: ddcedc1f7876e62717de43ab3491e2829bdad0b028261805f94aa080967e5859
-      url: "https://pub.dev"
-    source: hosted
-    version: "3.0.0"
   pointer_interceptor:
     dependency: "direct main"
     description:
@@ -816,6 +800,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.10.3"
+  posix:
+    dependency: transitive
+    description:
+      name: posix
+      sha256: "185ef7606574f789b40f289c233efa52e96dead518aed988e040a10737febb07"
+      url: "https://pub.dev"
+    source: hosted
+    version: "6.5.0"
+  proj4dart:
+    dependency: transitive
+    description:
+      name: proj4dart
+      sha256: ddcedc1f7876e62717de43ab3491e2829bdad0b028261805f94aa080967e5859
+      url: "https://pub.dev"
+    source: hosted
+    version: "3.0.0"
   pub_semver:
     dependency: transitive
     description:

@@ -40,9 +40,10 @@ class _ReportSpotSheetState extends State<ReportSpotSheet> {
   final _problem = TextEditingController();
   final _description = TextEditingController();
   late String _type;
-  bool _photoAttached = false;
 
   bool get _isHot => widget.mode == ReportSpotMode.hotZone;
+
+
 
   // (label shown, marker bucket) — cool spots map to a theme category.
   static const _coolTypes = <(String, String)>[
@@ -161,11 +162,6 @@ class _ReportSpotSheetState extends State<ReportSpotSheet> {
                   maxLines: 4,
                   decoration: const InputDecoration(labelText: 'Description'),
                   validator: _required,
-                ),
-                const SizedBox(height: AppTheme.spaceMD),
-                _PhotoUpload(
-                  attached: _photoAttached,
-                  onTap: () => setState(() => _photoAttached = !_photoAttached),
                 ),
                 const SizedBox(height: AppTheme.spaceMD),
                 SizedBox(
@@ -379,52 +375,6 @@ class _TypePickerSheet extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PhotoUpload extends StatelessWidget {
-  const _PhotoUpload({required this.attached, required this.onTap});
-
-  final bool attached;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final tt = Theme.of(context).textTheme;
-    return InkWell(
-      borderRadius: BorderRadius.circular(AppTheme.radiusLG),
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(AppTheme.spaceMD),
-        decoration: BoxDecoration(
-          color: attached ? AppTheme.primaryLight : AppTheme.bgCard,
-          borderRadius: BorderRadius.circular(AppTheme.radiusLG),
-          border: Border.all(
-            color: attached ? AppTheme.primary : AppTheme.borderLight,
-            width: .5,
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              attached ? Icons.check_circle : Icons.add_a_photo_outlined,
-              color: attached ? AppTheme.primary : AppTheme.textHint,
-              size: 22,
-            ),
-            const SizedBox(width: AppTheme.spaceMD),
-            Expanded(
-              child: Text(
-                attached ? 'Photo attached' : 'Add a photo (optional)',
-                style: tt.bodyMedium!.copyWith(
-                  color: attached ? AppTheme.primaryDark : AppTheme.textSecondary,
-                ),
-              ),
-            ),
-          ],
         ),
       ),
     );

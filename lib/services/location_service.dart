@@ -1,7 +1,8 @@
+import 'package:flutter/foundation.dart';
 import 'package:geolocator/geolocator.dart';
 
-/// Best-effort device location. Falls back to Bangkok (the prototype's default
-/// city) when location services or permissions are unavailable.
+/// Best-effort device location. Falls back to Bangkok center when location
+/// services or permissions are unavailable.
 class LocationResult {
   const LocationResult({
     required this.latitude,
@@ -25,8 +26,12 @@ class LocationResult {
 class LocationService {
   Future<LocationResult> currentLocation() async {
     try {
-      if (!await Geolocator.isLocationServiceEnabled()) {
-        return LocationResult.fallback;
+      // On web, isLocationServiceEnabled() often returns false even when the
+      // browser supports geolocation — skip it and attempt the position directly.
+      if (!kIsWeb) {
+        if (!await Geolocator.isLocationServiceEnabled()) {
+          return LocationResult.fallback;
+        }
       }
 
       var permission = await Geolocator.checkPermission();
@@ -39,7 +44,10 @@ class LocationService {
       }
 
       final position = await Geolocator.getCurrentPosition(
-        locationSettings: const LocationSettings(accuracy: LocationAccuracy.high),
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: Duration(seconds: 10),
+        ),
       );
       return LocationResult(
         latitude: position.latitude,

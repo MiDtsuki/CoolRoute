@@ -97,7 +97,7 @@ class HotZoneReportSheet extends StatelessWidget {
               runSpacing: 8,
               children: [
                 _InfoPill(icon: Icons.category_outlined, label: 'Category', value: report.category),
-                _InfoPill(icon: Icons.schedule, label: 'Reported', value: report.timeAgo),
+                _InfoPill(icon: Icons.schedule, label: 'Reported', value: report.displayTimeAgo),
                 _InfoPill(icon: Icons.verified, label: 'Verified', value: '${report.verifications}'),
                 _InfoPill(icon: Icons.groups_outlined, label: 'Status', value: _communityStatus),
               ],

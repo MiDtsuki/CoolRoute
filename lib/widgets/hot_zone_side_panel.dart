@@ -11,15 +11,19 @@ class HotZoneSidePanel extends StatelessWidget {
     required this.report,
     required this.nearbyReports,
     this.onClose,
-    this.onVerify,
+    this.onStillHot,
+    this.onResolve,
     this.alreadyVerified = false,
+    this.alreadyResolved = false,
   });
 
   final HotZoneReport report;
   final List<NearbyReport> nearbyReports;
   final VoidCallback? onClose;
-  final ValueChanged<HotZoneReport>? onVerify;
+  final ValueChanged<HotZoneReport>? onStillHot;
+  final ValueChanged<HotZoneReport>? onResolve;
   final bool alreadyVerified;
+  final bool alreadyResolved;
 
   @override
   Widget build(BuildContext context) {
@@ -61,8 +65,10 @@ class HotZoneSidePanel extends StatelessWidget {
                 child: ReportPanelContent(
                     report: report,
                     nearbyReports: nearbyReports,
-                    onVerify: onVerify,
-                    alreadyVerified: alreadyVerified),
+                    onStillHot: onStillHot,
+                    onResolve: onResolve,
+                    alreadyVerified: alreadyVerified,
+                    alreadyResolved: alreadyResolved),
               ),
             ),
           ],

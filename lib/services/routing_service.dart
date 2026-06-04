@@ -63,7 +63,8 @@ class RoutingService {
     final params = <String, String>{
       'api_key': key,
       'text': query,
-      'size': '6',
+      'size': '8',
+      'layers': 'venue,address,street,locality',
       if (focusLat != null && focusLng != null) ...{
         'focus.point.lat': '$focusLat',
         'focus.point.lon': '$focusLng',

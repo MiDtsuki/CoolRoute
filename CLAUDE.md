@@ -1,177 +1,211 @@
-# CLAUDE.md — CoolRoute Project Instructions
+# CLAUDE.md
 
-Read this file completely before making any changes. Also read `DESIGN.md` in the project root before touching any UI file.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+Read this file completely before making any changes. Also read `DESIGN.md` before touching any UI file.
 
 ---
 
 ## Project Overview
 
-CoolRoute is a heat-safe navigation and community reporting Flutter app. It helps users reduce outdoor heat exposure by suggesting cooler routes, showing community-reported hot zones on a map, finding cool spots, and displaying NASA GIBS-style environmental data.
+CoolRoute is a heat-safe navigation and community reporting Flutter app targeting **Android** and **Flutter Web**. Helps users reduce heat exposure via cooler walking routes, community-reported hot zones, cool spot discovery, and NASA GIBS environmental data.
 
-**Theme:** Fighting the impact of increased Earth temperature.
-**Stage:** Frontend UI prototype. No real backend, API, or database yet. All data is dummy/hardcoded.
+**Stage:** Fully wired production app — Firebase/Firestore, OpenRouteService, WeatherAPI, NASA GIBS, Google Maps, OpenStreetMap. Not a prototype.
 
 ---
 
-## Platforms
+## Commands
 
-Target platforms: **Android** and **Flutter Web**.
+```powershell
+flutter pub get          # install dependencies
+flutter run -d chrome    # run on web (use -d edge if Chrome unavailable)
+flutter run              # run on connected Android device/emulator
+flutter analyze          # lint — must be clean before any commit
+```
 
-### Hard platform rules
-- Never use `dart:io` — it breaks on web. Use `dart:typed_data` or `kIsWeb` checks instead.
-- Never use `path_provider` for anything that runs on web.
-- Never use `File` from `dart:io` — use `Uint8List` or conditional imports.
-- All packages must be web-safe. Check pub.dev web compatibility before adding.
-- Google Maps: use `google_maps_flutter` with a web API key. If the key is missing or maps fail to load, show the custom fallback map widget (`CustomMapFallback`) — never crash or show a blank screen.
+---
+
+## Hard Platform Rules
+
+- **Never use `dart:io`** — breaks on web. Use `dart:typed_data` or `kIsWeb` checks.
+- **Never use `File` from `dart:io`** — use `Uint8List` or conditional imports.
+- **Never use `path_provider`** for anything that runs on web.
+- All packages must be web-safe — check pub.dev before adding any.
 - Use `kIsWeb` from `flutter/foundation.dart` for platform branching.
 
 ---
 
-## Navigation Structure
+## Architecture
 
-4 tabs only. Bottom navigation bar on mobile/tablet. Top app bar navigation on web (width > 800px).
-
-| Tab | Screen file | Route |
-|-----|-------------|-------|
-| Home | `home_screen.dart` | `/` |
-| Route | `route_screen.dart` | `/route` |
-| Map | `map_screen.dart` | `/map` |
-| Data | `data_screen.dart` | `/data` |
-
-Cool Spots is a filter mode inside the Map tab — not a separate tab. The old 5-tab layout with a separate Cool Spots tab has been removed.
-
----
-
-## Folder Structure
+### Boot sequence
 
 ```
-lib/
-  main.dart
-  app.dart                  # MaterialApp, theme, routing
-  theme/
-    app_theme.dart          # All color tokens, TextTheme, ThemeData
-  screens/
-    home_screen.dart
-    route_screen.dart
-    map_screen.dart
-    data_screen.dart
-  widgets/
-    custom_map_fallback.dart   # Fallback when Google Maps unavailable
-    hot_zone_bottom_sheet.dart # Map marker detail panel
-    hot_zone_side_panel.dart   # Web version of the above
-    route_card.dart
-    cool_spot_card.dart
-    heat_stat_row.dart
-    layer_chip_bar.dart        # Environmental data layer selector
-  models/
-    hot_zone.dart
-    cool_spot.dart
-    route_option.dart
-    env_layer.dart
-  data/
-    dummy_hot_zones.dart
-    dummy_cool_spots.dart
-    dummy_routes.dart
-    dummy_env_layers.dart
-  services/
-    location_service.dart     # Stub only — returns dummy Bangkok coords
-    map_service.dart          # Stub only
+main.dart
+  → flutter_dotenv loads .env (graceful if missing)
+  → Firebase.initializeApp() (firebaseReady flag on failure)
+  → injects Google Maps JS script on web
+  → runApp(CoolRouteApp(firebaseReady: ...))
+
+CoolRouteApp (app.dart)
+  → MaterialApp + AppTheme.light()
+  → AuthGate(firebaseReady)
+
+AuthGate (screens/auth/auth_gate.dart)
+  → Firebase signed in? → AppShell + FirestoreSeedService.seedIfEmpty()
+  → else → WelcomeScreen → LoginScreen
+
+AppShell (screens/shell/app_shell.dart)
+  → IndexedStack of 5 screens (keeps map camera alive)
+  → mobile: bottom NavigationBar | web (>800px): top _WebNavBar
 ```
 
-If files don't exist yet, create them in the correct location. Never put business logic inside screen files — keep screens as layout + state only.
+### 5-tab navigation
+
+| Index | Tab | Screen file |
+|---|---|---|
+| 0 | Home | `screens/home/home_screen.dart` |
+| 1 | Route | `screens/route/route_screen.dart` |
+| 2 | Map | `screens/map/map_screen.dart` |
+| 3 | Data | `screens/data/environmental_data_screen.dart` |
+| 4 | Profile | `screens/profile/profile_screen.dart` |
+
+Cool Spots is a **filter mode inside the Map tab**, not a separate tab. `cool_spots_screen.dart` is orphaned — do not wire it in.
+
+### Service layer
+
+All services follow a **real-or-dummy fallback** pattern: attempt the real call, catch errors, return sensible fallback so the app never crashes.
+
+| Service | What it does |
+|---|---|
+| `WeatherService` | WeatherAPI.com — drives Home hero + Data panel |
+| `PlacesService` | OSM Overpass API — real nearby cool spots |
+| `NasaGibsService` | Builds WMTS tile URLs for `flutter_map` |
+| `RoutingService` | OpenRouteService — geocoding (Pelias: venue/address/street) + walking directions |
+| `RoutePlanner` | Scores `RawRoute` list by hot-zone proximity → `RouteOption` list |
+| `ReportService` | Firestore `hotZones` — full CRUD: submit, read (with 48h expiry), verifyReport, resolveReport (3-vote takedown), updateReport, deleteReport, getUserHotZoneReports |
+| `CoolSpotService` | Firestore `coolSpots` — submit (with 48h expiry on read), getUserCoolSpots, deleteCoolSpot |
+| `TreeEventService` | Firestore `treeEvents` — createEvent, contribute (RSVP/water/donate/attend), getUserTreeEvents, deleteTreeEvent |
+| `UserProfileService` | Firestore `users/{uid}` — profile CRUD, saved routes, stat counters |
+| `FirebaseAuthService` | Email-password / Google / anonymous sign-in |
+| `FirestoreSeedService` | Seeds initial hot zones + cool spots on first login (only if collections are empty) |
+| `LocationService` | `geolocator` — real device/browser location; skips `isLocationServiceEnabled()` on web (unreliable); falls back to Bangkok center with `isReal: false` flag |
+
+### Live data requirements (`.env` in project root)
+
+```
+GOOGLE_MAPS_API_KEY=...   # web + Android
+WEATHER_API_KEY=...       # WeatherAPI.com
+ORS_API_KEY=...           # OpenRouteService (routing + geocoding)
+```
+
+`.env` is bundled as a Flutter asset loaded by `flutter_dotenv`. Keys are optional — every service degrades gracefully without them.
+
+### Firestore collections & rules
+
+| Collection | Notes |
+|---|---|
+| `hotZones` | world-read; authed create; updates: verifications/verifiedBy/resolvedBy fields OR owner edits title/description/category; delete: owner OR resolvedBy.size() >= 3 |
+| `coolSpots` | world-read; authed create; updates: verifiedBy; delete: owner |
+| `treeEvents` | world-read; authed create; updates: rsvpBy/waterBy/donateBy/attendBy; delete: owner |
+| `users/{uid}` | owner read/write only |
+
+Rules file: `backend/firestore.rules`. Deploy with:
+```
+firebase deploy --only firestore:rules --config backend/firebase.json
+```
+
+### Delete / expiry architecture
+
+Three delete paths for `hotZones`:
+1. **48-hour auto-expiry** — `getHotZoneReports()` checks `createdAt`; expired docs are deleted fire-and-forget by the reading client and excluded from results.
+2. **Community takedown** — `resolveReport()` transaction adds uid to `resolvedBy`; when `resolvedBy.length >= 3` the doc is deleted and the map removes the pin immediately.
+3. **Owner delete** — `deleteReport(id)` called from Profile → My Contributions (with confirmation dialog).
+
+Same 48-hour expiry applies to `coolSpots` (community-submitted only; OSM spots have no `createdAt`).
+
+### Cross-screen refresh signals
+
+Global `ValueNotifier<int>` instances in `lib/services/report_refresh.dart`. Services call the helper functions; screens listen via `addListener` / `ValueListenableBuilder`.
+
+| Notifier | Helper | Trigger |
+|---|---|---|
+| `hotZoneRevision` | `notifyHotZonesChanged()` | new report, verification, or delete |
+| `coolSpotRevision` | `notifyCoolSpotsChanged()` | new cool-spot suggestion |
+| `treeEventRevision` | `notifyTreeEventsChanged()` | new tree event or contribution |
+| `profileRevision` | `notifyProfileChanged()` | save/remove route, report, verify |
+
+Never set `.value` directly — always call the helper.
+
+### Custom map markers
+
+`lib/widgets/map_marker_icons.dart` — `MapMarkerIcons.build(color, icon)` renders a teardrop pin bitmap async using `dart:ui` `PictureRecorder` + `TextPainter` at 3× pixel density. Returns a `BitmapDescriptor` for use with `google_maps_flutter`.
+
+`_GoogleMapViewState` in `coolroute_map.dart` caches 7 variants in `initState` (hot-extreme, hot-medium, hot-low, cool-water, cool-shade, cool-ac, tree). Falls back to `defaultMarkerWithHue` while loading.
+
+### Map screen architecture
+
+Selected-marker state is held **at `MapScreen` level** (not inside the map widget) so both the bottom sheet (mobile) and side panel (web) can read it. Use `PointerInterceptor` around all floating UI overlaid on the Google Map to prevent mouse event bleed-through.
+
+### Route screen architecture
+
+`RouteScreen` → `RoutingService.geocode()` for destination search (returns venues/addresses/streets/localities), `RoutingService.walkingRoutes()` for raw paths, `RoutePlanner.score()` for heat-ranked `RouteOption` list. The map portion is `RouteMap` widget (`widgets/route_map.dart`). All floating panels wrapped in `PointerInterceptor`.
+
+### Timestamps
+
+`HotZoneReport.displayTimeAgo` — computed getter that derives a relative label from `createdAt` ("just now" / "N min ago" / "N hrs ago" / "yesterday" / "N days ago" / "Jan 5"). Falls back to the stored `timeAgo` string for legacy docs. Always use `displayTimeAgo` in the UI, never the raw `timeAgo` field.
 
 ---
 
-## Dummy Data Rules
+## Layout Breakpoints
 
-- All data is hardcoded in `lib/data/`. Never fetch from a real API.
-- Location is always Bangkok, Thailand (13.7563° N, 100.5018° E).
-- Current weather is always: 36°C, feels like 41°C, humidity 70%, UV High, heat risk Extreme.
-- Hot zones: minimum 6 entries with a mix of red (extreme/high), orange (medium), and green (shade/cool) markers.
-- Cool spots: minimum 5 entries — university library, water refill station, tree walkway, 7-Eleven, shopping mall.
-- Routes: 3 options — Fastest (high risk), Cooler (medium risk, recommended), Indoor Cut-through (low risk).
-- Environmental layers: 6 entries — Land Surface Temp, Sea Surface Temp, Cloud Cover, Aerosol/Air Quality, UV/Ozone, Weather Heat Index.
-- One hot zone must always be set as `isSelected: true` by default for the Map screen. Use "Engineering Building Walkway" as the default selected marker.
-
----
-
-## Dummy Data Content Quality
-
-Use realistic content. No "Example 1", no "Lorem ipsum", no "Test location".
-
-Hot zone report examples:
-- "Engineering Building Walkway — exposed concrete, no shade, 8 users verified"
-- "Main Gate Bus Stop — no shelter, direct sunlight 11AM–3PM, 14 users"
-- "Science Faculty Open Plaza — heat radiates from paving, 6 users"
-
-Cool spot examples:
-- "University Library — air-conditioned, open 8AM–8PM, 250m away"
-- "Water Refill Station (Near Gate 3) — working, free, 180m away"
-- "Tree Covered Walkway (Engineering Path) — natural shade, always available"
-
----
-
-## Web Layout Rules
-
-Apply these breakpoints consistently:
-
-| Width | Layout mode |
-|-------|-------------|
+| Width | Mode |
+|---|---|
 | < 600px | Mobile: bottom nav, single column, bottom sheets |
-| 600–800px | Tablet: bottom nav, slightly wider cards |
-| > 800px | Web: top nav bar, side panels, max-width containers |
+| 600–800px | Tablet: bottom nav, wider cards |
+| > 800px | Web: top nav bar, side panels, max-width 900px containers |
 
-On web (> 800px):
-- Non-map screens: max content width 900px, centered with `Center` + `ConstrainedBox`.
-- Home: action grid becomes 4 columns instead of 2×2.
-- Route: left panel (form + route cards, ~380px) + right map panel (remaining width).
-- Map: full-bleed map + right side panel (320px) instead of bottom sheet.
-- Data: left sidebar (layer list, 280px) + right viz panel fills remaining width.
-- Never stretch card content to full browser width on large screens.
+Web-specific:
+- Route: left panel (~380px form + route cards) + right map fill
+- Map: full-bleed map + right side panel (320px) instead of bottom sheet
+- Data: left layer sidebar (280px) + right viz panel
+
+Never use `showModalBottomSheet` for the map panel — use a custom positioned overlay so it coexists with the map.
 
 ---
 
 ## State Management
 
-Use `StatefulWidget` or `provider` — whichever is already in use. Do not introduce a new state management library without asking.
-
-Map screen selected marker state must be held at the screen level (not inside the map widget) so the bottom sheet / side panel can read it.
+`StatefulWidget` + `setState` throughout. Do not introduce a new state management library.
 
 ---
 
-## Google Maps Fallback
+## Design System
 
-The `CustomMapFallback` widget is a custom-painted Flutter canvas map showing:
-- Styled background (muted green-gray, `#E8F0EC`)
-- Road lines (white, `StrokeCap.round`)
-- Building block rectangles (light gray and light green)
-- All hot zone and cool spot markers positioned by relative coordinates
-- "Prototype map — live maps disabled" label bottom-left
+All colors → `AppTheme` static constants in `lib/theme/app_theme.dart`.  
+All text styles → `Theme.of(context).textTheme` (never inline `TextStyle`).  
+Max font weight: **500**.  
+Spacing constants: `AppTheme.spaceXS/SM/MD/LG/XL` (4/8/16/24/32px).  
+No Material elevation shadows on cards — use `borderLight` border instead.  
+Environmental Data screen is **dark-themed throughout** (`bgDark` scaffold) — no white sections.
 
-This widget must be fully functional and visually clean. It is the primary map shown in screenshots if Google Maps is unavailable.
+Full token list and component specs are in `DESIGN.md`.
 
 ---
 
-## Code Quality Rules
+## Fallback map
 
-- Run `flutter analyze` after every change. Fix all errors before proceeding.
-- Never leave `// TODO` comments in production UI code.
-- Never hardcode colors inline — always use `AppTheme.colorName` or the theme.
-- Never hardcode text styles inline — always use `Theme.of(context).textTheme`.
-- Widget files must not exceed ~200 lines. Split into sub-widgets if needed.
-- Use `const` constructors wherever possible.
-- All screen widgets must handle both narrow (mobile) and wide (web) layouts.
+When `GOOGLE_MAPS_API_KEY` is missing or map init fails, `CoolRouteMap` shows `_PlaceholderMapView` — a custom-painted canvas with styled roads, buildings, and `_Marker` widgets. Never crash or show blank screen.
 
 ---
 
 ## What Not To Do
 
-- Do not rebuild the entire project from scratch unless explicitly told to.
-- Do not add new packages without checking web compatibility.
-- Do not change dummy data values without being asked.
-- Do not use `showModalBottomSheet` for the map panel — use a custom positioned bottom sheet so it can coexist with the map without obscuring markers.
-- Do not put the bottom nav bar inside the map's Scaffold — it must be in the root Scaffold.
-- Do not use lorem ipsum or placeholder titles anywhere visible in the UI.
+- Do not use `dart:io`.
+- Do not put the bottom nav inside the map's `Scaffold` — it belongs in `AppShell`.
+- Do not put business logic inside screen files — services only.
+- Do not use `showModalBottomSheet` for the map side panel.
+- Do not set refresh notifier `.value` directly — use the helper functions.
+- Do not use `report.timeAgo` in the UI — use `report.displayTimeAgo`.
 
 ---
 
@@ -179,5 +213,5 @@ This widget must be fully functional and visually clean. It is the primary map s
 
 1. User's latest instruction takes priority.
 2. `DESIGN.md` controls all visual decisions.
-3. This file (`CLAUDE.md`) controls architecture and structure.
-4. Do not break existing working screens while changing another screen.
+3. This file controls architecture and structure.
+4. Do not break existing working screens while changing another.

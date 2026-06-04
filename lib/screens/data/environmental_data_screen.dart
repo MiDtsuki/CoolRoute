@@ -468,70 +468,9 @@ class _InfoPanel extends StatelessWidget {
                 ),
               ],
             ),
-            const SizedBox(height: AppTheme.spaceSM),
-            Text(
-              'The map imagery is live NASA GIBS data for the selected date. '
-              'The value above is a representative reading for Bangkok, not a '
-              'per-date measurement.',
-              style: tt.labelSmall!.copyWith(
-                  color: AppTheme.textOnDarkDim,
-                  height: 1.35,
-                  fontStyle: FontStyle.italic),
-            ),
-            const SizedBox(height: AppTheme.spaceMD),
-            const _LegendBar(),
           ],
         ),
       ),
-    );
-  }
-}
-
-// ── Legend bar ────────────────────────────────────────────────────────────────
-
-class _LegendBar extends StatelessWidget {
-  const _LegendBar();
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(AppTheme.radiusPill),
-            gradient: const LinearGradient(
-              colors: [
-                AppTheme.markerBlue,
-                AppTheme.primary,
-                AppTheme.riskMedium,
-                AppTheme.riskExtreme,
-              ],
-            ),
-          ),
-          child: const SizedBox(height: 10),
-        ),
-        const SizedBox(height: AppTheme.spaceXS),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              'Cool',
-              style: Theme.of(context)
-                  .textTheme
-                  .labelSmall!
-                  .copyWith(color: AppTheme.textOnDarkDim),
-            ),
-            Text(
-              'Hot',
-              style: Theme.of(context)
-                  .textTheme
-                  .labelSmall!
-                  .copyWith(color: AppTheme.textOnDarkDim),
-            ),
-          ],
-        ),
-      ],
     );
   }
 }
