@@ -16,13 +16,14 @@ import '../../services/location_service.dart';
 import '../../services/places_service.dart';
 import '../../services/report_refresh.dart';
 import '../../services/report_service.dart';
+import '../../services/tree_event_service.dart';
 import '../../services/user_profile_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/cool_spot_card.dart';
 import '../../widgets/coolroute_map.dart';
 import '../../widgets/hot_zone_bottom_sheet.dart';
 import '../../widgets/hot_zone_side_panel.dart';
-import '../../widgets/location_pin_picker.dart';
+import '../../widgets/map_location_picker.dart';
 import '../../widgets/report_spot_sheet.dart';
 
 class MapScreen extends StatefulWidget {
@@ -66,6 +67,10 @@ class _MapScreenState extends State<MapScreen> {
 
   // Nearby reports shown in the detail panel; replaced with live data on load.
   List<NearbyReport> _nearbyReports = DummyData.nearbyReports.take(3).toList();
+
+  // Community tree-planting events (Trees filter). Seeded with dummy, replaced
+  // with live Firestore events. Mutable so a freshly created event shows at once.
+  List<TreePin> _treeEvents = List.of(DummyTreePins.pins);
 
   // Live search query (matches names/categories across the active dataset).
   final TextEditingController _searchCtrl = TextEditingController();
@@ -135,7 +140,7 @@ class _MapScreenState extends State<MapScreen> {
   // Tree pins filtered by the search query (shown when the Trees filter is on).
   List<TreePin> get _visibleTrees {
     if (!_showTrees) return const [];
-    return DummyTreePins.pins
+    return _treeEvents
         .where((t) => _matchesQuery([t.title, t.locationName]))
         .toList();
   }
@@ -170,9 +175,11 @@ class _MapScreenState extends State<MapScreen> {
     _activeFilter = widget.initialTreesSelected ? _treesFilter : 'All';
     _resolveLocation();
     _loadHotZones();
-    // Reload when a report / suggestion is created elsewhere.
+    _loadTreeEvents();
+    // Reload when a report / suggestion / event is created elsewhere.
     hotZoneRevision.addListener(_loadHotZones);
     coolSpotRevision.addListener(_reloadCoolSpots);
+    treeEventRevision.addListener(_loadTreeEvents);
   }
 
   // Loads community hot-zone reports from Firestore (with a dummy fallback baked
@@ -184,6 +191,75 @@ class _MapScreenState extends State<MapScreen> {
     setState(() {
       _hotZones = zones;
       _nearbyReports = nearby.take(3).toList();
+    });
+  }
+
+  // Loads community tree-planting events from Firestore (dummy fallback in the
+  // service), replacing the seed list.
+  Future<void> _loadTreeEvents() async {
+    final events = await TreeEventService().getEvents();
+    if (!mounted) return;
+    setState(() => _treeEvents = events);
+  }
+
+  // Contribute to a tree event (RSVP / water / donate / attend) — one per user
+  // per action. Optimistically records the contribution, then persists it;
+  // reverts if the user had already contributed (or the event isn't saved yet).
+  Future<void> _onContributeTree(TreePin pin, TreeAction action) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final uid = _currentUid();
+    if (uid == null) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Sign in to join tree-planting events.')),
+      );
+      return;
+    }
+    if (pin.hasJoined(action, uid)) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('You already chose to ${action.label.toLowerCase()}.')),
+      );
+      return;
+    }
+
+    void replace(TreePin p) {
+      final i = _treeEvents.indexWhere((t) => t.id == pin.id);
+      if (i != -1) _treeEvents[i] = p;
+      if (_selectedTree?.id == pin.id) _selectedTree = p;
+    }
+
+    setState(() => replace(pin.withJoined(action, uid)));
+
+    try {
+      final counted = await TreeEventService().contribute(pin.id, uid, action);
+      if (counted) {
+        messenger.showSnackBar(
+          SnackBar(content: Text('Thanks — you chose to ${action.label.toLowerCase()}!')),
+        );
+      } else {
+        setState(() => replace(pin));
+        messenger.showSnackBar(
+          const SnackBar(
+            content: Text("Already recorded, or the event isn't saved yet — refresh and retry."),
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() => replace(pin));
+      debugPrint('VERIFY: tree contribute error: $e');
+      messenger.showSnackBar(
+        const SnackBar(content: Text('Could not record that. Try again.')),
+      );
+    }
+  }
+
+  // Drops a freshly created (pending) tree event onto the map immediately.
+  void _addPendingTreeEvent(TreePin event) {
+    setState(() {
+      _coolSpotsMode = false;
+      _activeFilter = _treesFilter;
+      _treeEvents = [event, ..._treeEvents];
+      _selectedTree = event;
+      _selectedZone = null;
     });
   }
 
@@ -339,6 +415,7 @@ class _MapScreenState extends State<MapScreen> {
   void dispose() {
     hotZoneRevision.removeListener(_loadHotZones);
     coolSpotRevision.removeListener(_reloadCoolSpots);
+    treeEventRevision.removeListener(_loadTreeEvents);
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -426,6 +503,7 @@ class _MapScreenState extends State<MapScreen> {
       builder: (_) => _ReportTypeSheet(
         onReportCoolSpot: () => _openReportForm(ReportSpotMode.coolSpot),
         onReportHotZone: () => _openReportForm(ReportSpotMode.hotZone),
+        onPlantTree: _openTreeEventForm,
       ),
     );
   }
@@ -440,6 +518,19 @@ class _MapScreenState extends State<MapScreen> {
         anchor: _reportAnchor,
         onCoolSpot: _addPendingCoolSpot,
         onHotZone: _addPendingHotZone,
+      ),
+    );
+  }
+
+  void _openTreeEventForm() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _PlantTreeSheet(
+        anchor: _reportAnchor,
+        uid: _currentUid(),
+        onCreate: _addPendingTreeEvent,
       ),
     );
   }
@@ -626,7 +717,9 @@ class _MapScreenState extends State<MapScreen> {
                 ? _TreePinSidePanel(
                     key: ValueKey(_selectedTree!.title),
                     pin: _selectedTree!,
+                    currentUid: _currentUid(),
                     onClose: _onDismiss,
+                    onContribute: _onContributeTree,
                   )
                 : _ZonesSidePanel(
                     key: const ValueKey('zones'),
@@ -685,7 +778,9 @@ class _MapScreenState extends State<MapScreen> {
               ignoring: !treeSheetVisible,
               child: _TreePinBottomSheet(
                 pin: _selectedTree ?? DummyTreePins.pins.first,
+                currentUid: _currentUid(),
                 onClose: _onDismiss,
+                onContribute: _onContributeTree,
               ),
             ),
           ),
@@ -1968,10 +2063,12 @@ class _ReportTypeSheet extends StatelessWidget {
   const _ReportTypeSheet({
     required this.onReportCoolSpot,
     required this.onReportHotZone,
+    required this.onPlantTree,
   });
 
   final VoidCallback onReportCoolSpot;
   final VoidCallback onReportHotZone;
+  final VoidCallback onPlantTree;
 
   @override
   Widget build(BuildContext context) {
@@ -2038,16 +2135,11 @@ class _ReportTypeSheet extends StatelessWidget {
               _ReportTypeTile(
                 icon: Icons.park_outlined,
                 iconColor: AppTheme.markerTree,
-                title: 'Plant a Tree',
-                subtitle: 'Post a tree planting contribution pin.',
+                title: 'Start a Tree-Planting Event',
+                subtitle: 'Plan a planting others can RSVP, water, donate or attend.',
                 onTap: () {
                   Navigator.of(context).pop();
-                  showModalBottomSheet<void>(
-                    context: context,
-                    isScrollControlled: true,
-                    backgroundColor: Colors.transparent,
-                    builder: (_) => const _PlantTreeSheet(),
-                  );
+                  onPlantTree();
                 },
               ),
             ],
@@ -2123,10 +2215,17 @@ class _ReportTypeTile extends StatelessWidget {
 }
 
 class _TreePinBottomSheet extends StatelessWidget {
-  const _TreePinBottomSheet({required this.pin, this.onClose});
+  const _TreePinBottomSheet({
+    required this.pin,
+    this.currentUid,
+    this.onClose,
+    this.onContribute,
+  });
 
   final TreePin pin;
+  final String? currentUid;
   final VoidCallback? onClose;
+  final void Function(TreePin, TreeAction)? onContribute;
 
   @override
   Widget build(BuildContext context) {
@@ -2187,7 +2286,11 @@ class _TreePinBottomSheet extends StatelessWidget {
                   AppTheme.spaceMD,
                   AppTheme.spaceLG,
                 ),
-                child: _TreePinPanelContent(pin: pin),
+                child: _TreePinPanelContent(
+                  pin: pin,
+                  currentUid: currentUid,
+                  onContribute: onContribute,
+                ),
               ),
             ),
           ],
@@ -2198,10 +2301,18 @@ class _TreePinBottomSheet extends StatelessWidget {
 }
 
 class _TreePinSidePanel extends StatelessWidget {
-  const _TreePinSidePanel({super.key, required this.pin, this.onClose});
+  const _TreePinSidePanel({
+    super.key,
+    required this.pin,
+    this.currentUid,
+    this.onClose,
+    this.onContribute,
+  });
 
   final TreePin pin;
+  final String? currentUid;
   final VoidCallback? onClose;
+  final void Function(TreePin, TreeAction)? onContribute;
 
   @override
   Widget build(BuildContext context) {
@@ -2253,7 +2364,11 @@ class _TreePinSidePanel extends StatelessWidget {
                   AppTheme.spaceMD,
                   AppTheme.spaceLG,
                 ),
-                child: _TreePinPanelContent(pin: pin),
+                child: _TreePinPanelContent(
+                  pin: pin,
+                  currentUid: currentUid,
+                  onContribute: onContribute,
+                ),
               ),
             ),
           ],
@@ -2264,19 +2379,20 @@ class _TreePinSidePanel extends StatelessWidget {
 }
 
 class _TreePinPanelContent extends StatelessWidget {
-  const _TreePinPanelContent({required this.pin});
+  const _TreePinPanelContent({
+    required this.pin,
+    this.currentUid,
+    this.onContribute,
+  });
 
   final TreePin pin;
-
-  void _confirm(BuildContext context, String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
-  }
+  final String? currentUid;
+  final void Function(TreePin, TreeAction)? onContribute;
 
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
+    final totalJoined = pin.countFor(TreeAction.rsvp) + pin.countFor(TreeAction.attend);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2289,11 +2405,7 @@ class _TreePinPanelContent extends StatelessWidget {
               ),
               child: const Padding(
                 padding: EdgeInsets.all(AppTheme.spaceSM),
-                child: Icon(
-                  Icons.park_outlined,
-                  color: AppTheme.textOnDark,
-                  size: 16,
-                ),
+                child: Icon(Icons.park_outlined, color: AppTheme.textOnDark, size: 16),
               ),
             ),
             const SizedBox(width: AppTheme.spaceSM),
@@ -2303,56 +2415,98 @@ class _TreePinPanelContent extends StatelessWidget {
         const SizedBox(height: AppTheme.spaceSM),
         Row(
           children: [
-            const Icon(
-              Icons.place_outlined,
-              size: 14,
-              color: AppTheme.textSecondary,
-            ),
+            const Icon(Icons.place_outlined, size: 14, color: AppTheme.textSecondary),
             const SizedBox(width: 4),
             Expanded(child: Text(pin.locationName, style: tt.bodySmall)),
           ],
         ),
-        const SizedBox(height: AppTheme.spaceSM + 4),
-        Text(
-          'Planted ${pin.datePlanted} by ${pin.plantedBy}',
-          style: tt.bodySmall,
-        ),
-        const SizedBox(height: AppTheme.spaceMD),
-        Text(pin.description, style: tt.bodyMedium),
-        const SizedBox(height: AppTheme.spaceMD),
+        const SizedBox(height: AppTheme.spaceXS),
         Row(
           children: [
+            const Icon(Icons.event_outlined, size: 14, color: AppTheme.textSecondary),
+            const SizedBox(width: 4),
             Expanded(
-              child: OutlinedButton(
-                onPressed: () =>
-                    _confirm(context, 'Thanks for watering this tree!'),
-                child: const Text('I watered it 💧'),
-              ),
-            ),
-            const SizedBox(width: AppTheme.spaceSM),
-            Expanded(
-              child: OutlinedButton(
-                onPressed: () => _confirm(context, 'Growth status noted.'),
-                child: const Text('Still growing 🌱'),
+              child: Text(
+                '${pin.datePlanted.isEmpty ? 'Date TBC' : pin.datePlanted} · organized by ${pin.plantedBy}',
+                style: tt.bodySmall,
               ),
             ),
           ],
         ),
+        if (pin.goalTrees > 0) ...[
+          const SizedBox(height: AppTheme.spaceXS),
+          Text('Goal: ${pin.goalTrees} tree${pin.goalTrees == 1 ? '' : 's'} · $totalJoined joining',
+              style: tt.bodySmall!.copyWith(color: AppTheme.markerTree)),
+        ],
+        const SizedBox(height: AppTheme.spaceMD),
+        Text(pin.description, style: tt.bodyMedium),
+        const SizedBox(height: AppTheme.spaceMD),
+        Text('Join in', style: tt.labelLarge),
         const SizedBox(height: AppTheme.spaceSM),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton(
-            onPressed: () => _confirm(context, 'Tree pin centered on map.'),
-            child: const Text('View on map'),
-          ),
+        Row(
+          children: [
+            _ContribButton(pin: pin, action: TreeAction.rsvp, icon: Icons.how_to_reg, uid: currentUid, onTap: onContribute),
+            const SizedBox(width: AppTheme.spaceSM),
+            _ContribButton(pin: pin, action: TreeAction.water, icon: Icons.water_drop_outlined, uid: currentUid, onTap: onContribute),
+          ],
+        ),
+        const SizedBox(height: AppTheme.spaceSM),
+        Row(
+          children: [
+            _ContribButton(pin: pin, action: TreeAction.donate, icon: Icons.volunteer_activism_outlined, uid: currentUid, onTap: onContribute),
+            const SizedBox(width: AppTheme.spaceSM),
+            _ContribButton(pin: pin, action: TreeAction.attend, icon: Icons.groups_outlined, uid: currentUid, onTap: onContribute),
+          ],
         ),
       ],
     );
   }
 }
 
+class _ContribButton extends StatelessWidget {
+  const _ContribButton({
+    required this.pin,
+    required this.action,
+    required this.icon,
+    required this.uid,
+    required this.onTap,
+  });
+
+  final TreePin pin;
+  final TreeAction action;
+  final IconData icon;
+  final String? uid;
+  final void Function(TreePin, TreeAction)? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final joined = pin.hasJoined(action, uid);
+    final count = pin.countFor(action);
+    return Expanded(
+      child: OutlinedButton.icon(
+        onPressed: (onTap == null || joined) ? null : () => onTap!(pin, action),
+        icon: Icon(joined ? Icons.check : icon, size: 16),
+        label: Text('${action.label}${count > 0 ? ' · $count' : ''}'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: joined ? AppTheme.markerTree : AppTheme.primary,
+          side: BorderSide(color: joined ? AppTheme.markerTree : AppTheme.primary),
+          padding: const EdgeInsets.symmetric(horizontal: AppTheme.spaceSM),
+        ),
+      ),
+    );
+  }
+}
+
 class _PlantTreeSheet extends StatefulWidget {
-  const _PlantTreeSheet();
+  const _PlantTreeSheet({
+    required this.anchor,
+    required this.uid,
+    required this.onCreate,
+  });
+
+  final LatLng anchor;
+  final String? uid;
+  final ValueChanged<TreePin> onCreate;
 
   @override
   State<_PlantTreeSheet> createState() => _PlantTreeSheetState();
@@ -2360,7 +2514,22 @@ class _PlantTreeSheet extends StatefulWidget {
 
 class _PlantTreeSheetState extends State<_PlantTreeSheet> {
   final _formKey = GlobalKey<FormState>();
-  Offset _pin = const Offset(.50, .44);
+  final _title = TextEditingController();
+  final _location = TextEditingController();
+  final _when = TextEditingController();
+  final _goal = TextEditingController();
+  final _description = TextEditingController();
+  late LatLng _picked = widget.anchor;
+
+  @override
+  void dispose() {
+    _title.dispose();
+    _location.dispose();
+    _when.dispose();
+    _goal.dispose();
+    _description.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2396,43 +2565,73 @@ class _PlantTreeSheetState extends State<_PlantTreeSheet> {
                 ),
                 const SizedBox(height: AppTheme.spaceMD),
                 Text(
-                  'Plant a Tree',
+                  'Start a tree-planting event',
                   style: Theme.of(context).textTheme.headlineMedium,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Others can RSVP, water, donate or attend once it\'s posted.',
+                  style: Theme.of(context).textTheme.bodySmall,
                 ),
                 const SizedBox(height: AppTheme.spaceMD),
                 TextFormField(
-                  decoration: const InputDecoration(labelText: 'Tree type'),
-                  validator: _required,
-                ),
-                const SizedBox(height: AppTheme.spaceSM),
-                TextFormField(
-                  decoration: const InputDecoration(labelText: 'Location note'),
-                  validator: _required,
-                ),
-                const SizedBox(height: AppTheme.spaceSM),
-                TextFormField(
-                  minLines: 3,
-                  maxLines: 4,
+                  controller: _title,
                   decoration: const InputDecoration(
-                    labelText: 'Note or description',
+                    labelText: 'Event title (e.g. Plant shade trees on Dorm Rd)',
                   ),
                   validator: _required,
                 ),
+                const SizedBox(height: AppTheme.spaceSM),
+                TextFormField(
+                  controller: _location,
+                  decoration: const InputDecoration(labelText: 'Location name'),
+                  validator: _required,
+                ),
+                const SizedBox(height: AppTheme.spaceSM),
+                Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: TextFormField(
+                        controller: _when,
+                        decoration: const InputDecoration(
+                          labelText: 'When (e.g. Sat 9 AM)',
+                        ),
+                        validator: _required,
+                      ),
+                    ),
+                    const SizedBox(width: AppTheme.spaceSM),
+                    Expanded(
+                      child: TextFormField(
+                        controller: _goal,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: 'Goal 🌳'),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: AppTheme.spaceSM),
+                TextFormField(
+                  controller: _description,
+                  minLines: 3,
+                  maxLines: 4,
+                  decoration: const InputDecoration(labelText: 'Description'),
+                  validator: _required,
+                ),
                 const SizedBox(height: AppTheme.spaceMD),
-                LocationPinPicker(
-                  label: 'Pin exact tree location',
+                MapLocationPicker(
+                  label: 'Pin the planting spot',
                   pinColor: AppTheme.markerTree,
-                  pinIcon: Icons.park_outlined,
-                  initialX: _pin.dx,
-                  initialY: _pin.dy,
-                  onChanged: (pin) => _pin = pin,
+                  pinIcon: Icons.park,
+                  initialLocation: widget.anchor,
+                  onChanged: (loc) => _picked = loc,
                 ),
                 const SizedBox(height: AppTheme.spaceMD),
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(
                     onPressed: _submit,
-                    child: const Text('Submit'),
+                    child: const Text('Post event'),
                   ),
                 ),
               ],
@@ -2448,17 +2647,51 @@ class _PlantTreeSheetState extends State<_PlantTreeSheet> {
     return null;
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
     final messenger = ScaffoldMessenger.of(context);
-    final placedPin = _pin;
-    Navigator.of(context).pop();
+    final navigator = Navigator.of(context);
+    final title = _title.text.trim();
+    final location = _location.text.trim();
+    final when = _when.text.trim();
+    final description = _description.text.trim();
+    final goal = int.tryParse(_goal.text.trim()) ?? 0;
+
+    // Optimistic pin, then persist.
+    widget.onCreate(TreePin(
+      id: 'pending-tree-$title',
+      title: title,
+      locationName: location,
+      datePlanted: when,
+      description: description,
+      plantedBy: 'You',
+      goalTrees: goal,
+      x: .5,
+      y: .5,
+      lat: _picked.latitude,
+      lng: _picked.longitude,
+    ));
+    navigator.pop();
     messenger.showSnackBar(
-      SnackBar(
-        content: Text(
-          'Your tree pin has been added! 🌱 Pin saved near ${placedPin.dx.toStringAsFixed(2)}, ${placedPin.dy.toStringAsFixed(2)}.',
-        ),
-      ),
+      const SnackBar(content: Text('Tree-planting event posted. Saving…')),
     );
+    try {
+      await TreeEventService().createEvent(
+        title: title,
+        locationName: location,
+        when: when,
+        description: description,
+        organizer: 'You',
+        goalTrees: goal,
+        lat: _picked.latitude,
+        lng: _picked.longitude,
+        x: .5,
+        y: .5,
+        userId: widget.uid,
+      );
+      notifyTreeEventsChanged();
+    } catch (e) {
+      debugPrint('VERIFY: tree event persist error: $e');
+    }
   }
 }

@@ -57,7 +57,7 @@ Keys live in `.env` (gitignored — never committed). Firebase provider toggles 
 - [ ] *(follow-up)* factor cool spots / shade into scoring; turn-by-turn steps; save a planned route
 
 **P2 — community + climate depth**
-- [ ] Tree-planting events (create · RSVP · water · donate)
+- [x] Tree-planting events (create · RSVP · water · donate · attend) — Firestore-backed
 - [ ] NDVI vegetation layer in the Data viewer
 - [x] Profile + saved-routes screen (core)
 - [ ] Persist saved routes from the Route tab (`addSavedRoute`)
@@ -76,8 +76,8 @@ the community/data-write half is mostly mock. Concretely:
 - **Genuinely working with real data:** Cool Spot Finder (OpenStreetMap), Weather (WeatherAPI),
   NASA GIBS viewer, Auth (email/Google/guest), Home dashboard, the map, the **Profile tab**, and
   the **community hot-zone loop** (report → persist → appears on map → verify → profile stats).
-- **Not implemented:** Tree-planting **events** (RSVP/water/donate), NDVI vegetation overlay,
-  a "Reports" tab, persisted saved routes.
+- **Not implemented:** NDVI vegetation overlay, a dedicated "Reports/Community" list view,
+  persisted saved routes.
 - **Dead/orphaned code:** `CoolSpotsScreen` — superseded by the Map's Cool Spots mode.
 
 With P0 and P1 done, the core loops are real: the community loop (report → persist → map →
@@ -95,7 +95,7 @@ Remaining gaps are mostly P2: tree-planting events, an NDVI layer, and persisted
 | Cool spot finder | ✅ | **Best-implemented feature.** `PlacesService` queries the OSM Overpass API for real nearby libraries, malls, water points, parks, cafés, etc. — real lat/lng, real distances, category buckets. Falls back to dummy on failure. Filters + live search work. |
 | Weather integration | ✅ | `WeatherService` → WeatherAPI.com (`current.json`), parses temp/feels-like/humidity/UV. Falls back to dummy Bangkok weather when no key. Drives Home hero + Data info panel. |
 | NASA GIBS viewer | ✅ | Upgraded to a **live tiled map** (`gibs_tile_map.dart` via `flutter_map`): streams GIBS **WMTS** tiles (EPSG:3857) — Blue Marble basemap + science layer + coastlines — pannable/zoomable, world-bounded, with date presets + custom date. Replaced the old single-snapshot `InteractiveViewer`. Each layer now carries a plain-language `blurb`. *(teammate `566a772`)* |
-| Community tree-planting | 🟠 | Only **static viewing** of dummy tree pins on the Map (Trees 🌱 filter) + a detail sheet. No event creation, no RSVP/water/donate/attend, no NDVI overlay. |
+| Community tree-planting | ✅ (core) | Real **tree-planting events** on the Map's Trees 🌱 filter, backed by Firestore (`treeEvents`). Create via Report → "Start a Tree-Planting Event"; others **RSVP / water / donate / attend** (one per user per action, transaction-enforced). Live refresh on create. NDVI planting-zone overlay still pending (P2). |
 
 ---
 
@@ -111,7 +111,7 @@ Remaining gaps are mostly P2: tree-planting events, an NDVI layer, and persisted
 | Cool Spot Finder | ✅ | Real data + filters (Water / Shade / Air-conditioned / Open Now) on the Map. "Verified" filter exists on the (orphaned) standalone screen. |
 | NASA Environmental Data Viewer | 🟡 | 6 layers wired (Land Surface Temp, Sea Surface Temp, Cloud Cover, Aerosol/Air Quality, UV/Ozone, Weather Heat Index), now rendered as a live tiled WMTS map (see NASA GIBS row) with per-layer blurbs. **Still missing the NDVI / vegetation layer** the spec calls out for candidate-planting-zone highlighting. |
 | Profile and Saved Routes | ✅ (core) | **Profile is now a live 5th tab.** `profile_screen.dart` loads the signed-in user's profile via `UserProfileService.getCurrentUserProfile()` (Firestore `users/{uid}`, auto-created on first load), shows contribution stats (reports / verifications / saved routes) + account type (guest vs email), and supports **editing** name/role/home-area/heat-sensitivity (persists via `updateProfile`) and **sign out** (mobile had none before). Falls back to dummy if Firebase is down. *Still TODO: stats counters (`reportCount`/`verifiedReportCount`) aren't incremented yet because reports/verification don't persist (P0); saved routes aren't written yet (needs `addSavedRoute` wired from the Route tab).* |
-| Tree-Planting Events | ❌ | Not implemented beyond static pin viewing. No event model with RSVP/watering/donation/attendance, no creation flow. |
+| Tree-Planting Events | ✅ (core) | Posted from the Map's Report sheet (the spec's "Reports tab" surface). `TreeEvent`-backed (`TreePin` model extended) Firestore `treeEvents`: title, when, goal, organizer, description, location. Contributions (RSVP / water / donate / attend) are one-per-user via `TreeEventService.contribute` transaction; buttons show counts and disable once joined. *Follow-up:* a dedicated Reports/Community list view; NDVI overlay. |
 
 ---
 
@@ -210,6 +210,18 @@ falls back to the dummy-data prototype path if not configured. `flutter analyze`
 
 Newest first. Dates are absolute.
 
+- **2026-06-04** — **P2: Tree-planting events.** Community events now persist to Firestore
+  (`treeEvents`): created from the Map's Report sheet ("Start a Tree-Planting Event" → title,
+  when, goal, location, description), shown under the Trees 🌱 filter. Contributions —
+  **RSVP / water / donate / attend** — are one-per-user-per-action via a `TreeEventService.contribute`
+  transaction; the detail panel shows live counts and disables a button once you've joined.
+  `TreePin` extended into the event model (id, lat/lng, goal, contributor lists); new
+  `tree_event_service.dart`; `treeEvents` Firestore rules added; `treeEventRevision` refresh signal;
+  tree markers now use real coordinates. Replaced the fake painted "pin picker"
+  (`LocationPinPicker`) with a **real Google-map picker** (`map_location_picker.dart`) — drag the
+  map under a centre pin to set the event's actual lat/lng. Also fixed a stray `1` that made
+  `backend/.firebaserc` invalid JSON (broke `firebase deploy`). `flutter analyze` clean.
+  *(Uncommitted — needs the updated `backend/firestore.rules` deployed for events to persist.)*
 - **2026-06-04** — **Pulled teammate work from `main`** (merge `03d05c6`); `flutter pub get` +
   analyze clean. Verified the merge preserved the P0 + cool-spot Firestore wiring in the rewritten
   `map_screen.dart`. Two teammate commits:

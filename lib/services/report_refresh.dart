@@ -11,3 +11,8 @@ void notifyHotZonesChanged() => hotZoneRevision.value++;
 final ValueNotifier<int> coolSpotRevision = ValueNotifier<int>(0);
 
 void notifyCoolSpotsChanged() => coolSpotRevision.value++;
+
+/// Same idea for community tree-planting events.
+final ValueNotifier<int> treeEventRevision = ValueNotifier<int>(0);
+
+void notifyTreeEventsChanged() => treeEventRevision.value++;

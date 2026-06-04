@@ -246,8 +246,10 @@ class _GoogleMapViewState extends State<_GoogleMapView> {
     for (final tree in widget.treePins) {
       markers.add(
         Marker(
-          markerId: MarkerId('tree-pin-${tree.title}'),
-          position: _positionFromOffset(tree.x, tree.y),
+          markerId: MarkerId('tree-pin-${tree.id.isNotEmpty ? tree.id : tree.title}'),
+          position: tree.hasLatLng
+              ? LatLng(tree.lat!, tree.lng!)
+              : _positionFromOffset(tree.x, tree.y),
           icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueGreen),
           infoWindow: InfoWindow(title: tree.title, snippet: tree.locationName),
           onTap: () => widget.onTreePinTap?.call(tree),
