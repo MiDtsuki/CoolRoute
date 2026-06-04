@@ -17,7 +17,11 @@ class PlacesService {
 
   final http.Client _client;
 
-  static const _endpoint = 'https://overpass-api.de/api/interpreter';
+  static const _endpoints = [
+    'https://overpass-api.de/api/interpreter',
+    'https://lz4.overpass-api.de/api/interpreter',
+    'https://z.overpass-api.de/api/interpreter',
+  ];
 
   /// Returns cool spots within [radiusMeters] of ([lat], [lng]), sorted by
   /// distance from that point. Throws on network/parse failure so callers can
@@ -48,14 +52,28 @@ class PlacesService {
 out center 200;
 ''';
 
-    final response = await _client.post(
-      Uri.parse(_endpoint),
-      headers: const {'Content-Type': 'text/plain; charset=utf-8'},
-      body: query,
-    );
-    if (response.statusCode != 200) {
-      throw http.ClientException('Overpass returned ${response.statusCode}');
+    // Use GET so the request passes through firewalls and Android network
+    // intermediaries that may block POST to external APIs. Try each mirror in
+    // order with a per-mirror timeout; the first successful response wins.
+    http.Response? response;
+    Object? lastError;
+    for (final endpoint in _endpoints) {
+      try {
+        final uri = Uri.parse(endpoint).replace(
+          queryParameters: {'data': query},
+        );
+        response = await _client
+            .get(uri, headers: const {'Accept': 'application/json'})
+            .timeout(const Duration(seconds: 20));
+        if (response.statusCode == 200) break;
+        lastError = http.ClientException('Overpass returned ${response.statusCode}');
+        response = null;
+      } catch (e) {
+        lastError = e;
+        response = null;
+      }
     }
+    if (response == null) throw lastError ?? Exception('All Overpass mirrors failed');
 
     final decoded = json.decode(response.body) as Map<String, dynamic>;
     final elements = (decoded['elements'] as List?) ?? const [];

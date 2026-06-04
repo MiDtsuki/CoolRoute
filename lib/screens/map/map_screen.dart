@@ -471,7 +471,8 @@ class _MapScreenState extends State<MapScreen> {
         lng: lng,
         radiusMeters: CoolRouteMap.nearbyRadiusMeters,
       );
-    } catch (_) {
+    } catch (e) {
+      debugPrint('PLACES: Overpass API failed — $e');
       osm = const [];
     }
     final community = await _loadCommunitySpots(lat, lng);
