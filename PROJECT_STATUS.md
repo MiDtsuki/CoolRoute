@@ -209,32 +209,37 @@ falls back to the dummy-data prototype path if not configured. `flutter analyze`
 
 Newest first. Dates are absolute.
 
+- **2026-06-03** — **Route UI redesign (Google-Maps-like).** Map is now the hero: a floating
+  directions bar (origin dot → destination search, with a clear button), alternate routes drawn
+  in grey beneath the selected teal one, and route options as a left sidebar on web / a bottom
+  sheet on mobile with compact rows (big duration + Recommended badge + hot-zone summary) and a
+  Start button. `RouteMap` gained `alternatePoints`. *(Uncommitted — pending push.)*
 - **2026-06-03** — **P1: real heat-safe routing.** New `RoutingService` (OpenRouteService —
   CORS-friendly, needs `ORS_API_KEY`) does geocoding + walking directions (with alternatives).
   `RoutePlanner` scores each route by proximity to reported hot zones and labels Fastest / Cooler
   (Recommended). `route_screen.dart` rewritten: start = current location, destination via search
   **or** map tap; `route_map.dart` draws the chosen route as a polyline with start/destination +
-  hot-zone markers. `RouteOption` extended with geometry/metrics. `flutter analyze` clean.
-  *(Not yet committed. Requires `ORS_API_KEY` in `.env`.)*
+  hot-zone markers. `RouteOption` extended with geometry/metrics. Committed `d47c08b`.
+  Requires `ORS_API_KEY` in `.env`.
 - **2026-06-03** — **Cool-spot suggestions now persist.** The map's "Suggest a Cool Spot" form
   writes to Firestore via `CoolSpotService.submitCoolSpot` (stores real lat/lng + category, returns
   the doc id). The map merges community suggestions (those with real coordinates) with the live
   OSM results and reloads on a `coolSpotRevision` signal, so a suggestion appears immediately and
   survives refresh. No rules change needed (the `coolSpots` create rule was already open to
-  authed users). *(Not yet committed.)*
+  authed users). Committed `7acee63`.
 - **2026-06-03** — **P0 fixes from testing.** (A) Report sheet's *Type* selector is now a
   scrollable modal picker (dropdown overlays leaked wheel-scroll to the Google Map). (B) New
   reports show live on Map + Home via a `hotZoneRevision` refresh signal (no restart). (D/E)
   Verification is now **one per user per report** — `verifyReport(id, uid)` runs a transaction
   against a `verifiedBy` list, the buttons disable once you've verified, and the counter only
   bumps on a genuinely new verification. **Requires deploying `backend/firestore.rules`** (now
-  allows `verifications` + `verifiedBy`). *(Not yet committed.)*
+  allows `verifications` + `verifiedBy`). Committed `1e8d5d7` — remember to deploy the rules.
 - **2026-06-03** — **P0 community/data-write wired.** Hot-zone reports now persist to Firestore
   (`ReportService.submitHotZoneReport` returns the new doc id; `CreateHotZoneReportScreen` gained
   field controllers). Map + Home read reports via `getHotZoneReports()`. "Still hot" / "Problem
   fixed" call `verifyReport()` with an optimistic count bump. Author `reportCount` +
   `verifiedReportCount` increment (set+merge so they work pre-doc-creation); Profile gained a
-  refresh button to pull updated counters. `flutter analyze` clean. *(Not yet committed.)*
+  refresh button to pull updated counters. `flutter analyze` clean. Committed `ed5d5d6`.
 - **2026-06-03** — Added Firestore-backed **Profile tab** (5th tab, mobile + web). Loads
   `users/{uid}` (auto-created), edits name/role/home-area/heat-sensitivity, stats, sign out.
   Fixed a false "could not save" error by driving the UI from local state (Firestore is

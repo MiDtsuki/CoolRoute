@@ -18,6 +18,7 @@ class RouteMap extends StatelessWidget {
     this.start,
     this.destination,
     this.routePoints = const [],
+    this.alternatePoints = const [],
     this.hotZones = const [],
     this.onTap,
     this.height = 300,
@@ -27,6 +28,9 @@ class RouteMap extends StatelessWidget {
   final LatLng? start;
   final LatLng? destination;
   final List<LatLng> routePoints;
+
+  /// Other (non-selected) routes, drawn faintly beneath the selected one.
+  final List<List<LatLng>> alternatePoints;
   final List<HotZoneReport> hotZones;
   final ValueChanged<LatLng>? onTap;
   final double height;
@@ -50,6 +54,7 @@ class RouteMap extends StatelessWidget {
                 start: start,
                 destination: destination,
                 routePoints: routePoints,
+                alternatePoints: alternatePoints,
                 hotZones: hotZones,
                 onTap: onTap,
               )
@@ -64,6 +69,7 @@ class _LiveRouteMap extends StatefulWidget {
     this.start,
     this.destination,
     required this.routePoints,
+    required this.alternatePoints,
     required this.hotZones,
     this.onTap,
   });
@@ -71,6 +77,7 @@ class _LiveRouteMap extends StatefulWidget {
   final LatLng? start;
   final LatLng? destination;
   final List<LatLng> routePoints;
+  final List<List<LatLng>> alternatePoints;
   final List<HotZoneReport> hotZones;
   final ValueChanged<LatLng>? onTap;
 
@@ -162,12 +169,23 @@ class _LiveRouteMapState extends State<_LiveRouteMap> {
     }
 
     final polylines = <Polyline>{};
+    // Alternates first (drawn beneath), faint grey.
+    for (var i = 0; i < widget.alternatePoints.length; i++) {
+      polylines.add(Polyline(
+        polylineId: PolylineId('route-alt-$i'),
+        points: widget.alternatePoints[i],
+        color: AppTheme.textHint,
+        width: 5,
+      ));
+    }
+    // Selected route on top, in the brand colour.
     if (widget.routePoints.isNotEmpty) {
       polylines.add(Polyline(
         polylineId: const PolylineId('route'),
         points: widget.routePoints,
         color: AppTheme.primary,
-        width: 6,
+        width: 7,
+        zIndex: 2,
       ));
     }
 

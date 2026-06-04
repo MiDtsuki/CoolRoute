@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 
+import '../../models/heat_risk.dart';
 import '../../models/hot_zone_report.dart';
 import '../../models/route_option.dart';
 import '../../services/location_service.dart';
@@ -9,7 +10,6 @@ import '../../services/route_planner.dart';
 import '../../services/routing_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/route_map.dart';
-import '../../widgets/route_option_card.dart';
 
 class RouteScreen extends StatefulWidget {
   const RouteScreen({super.key, this.initialSelectedRouteName});
@@ -26,7 +26,6 @@ class _RouteScreenState extends State<RouteScreen> {
 
   LatLng? _start;
   LatLng? _destination;
-  String _destinationLabel = '';
 
   List<HotZoneReport> _hotZones = const [];
   List<GeoResult> _searchResults = const [];
@@ -107,20 +106,29 @@ class _RouteScreenState extends State<RouteScreen> {
     _searchCtrl.text = result.label;
     setState(() {
       _destination = result.latLng;
-      _destinationLabel = result.label;
       _searchResults = const [];
     });
     _findRoutes();
   }
 
   void _onMapTap(LatLng point) {
+    FocusScope.of(context).unfocus();
     setState(() {
       _destination = point;
-      _destinationLabel = 'Dropped pin';
       _searchResults = const [];
       _searchCtrl.text = 'Dropped pin';
     });
     _findRoutes();
+  }
+
+  void _clearDestination() {
+    _searchCtrl.clear();
+    setState(() {
+      _destination = null;
+      _routes = const [];
+      _selected = null;
+      _searchResults = const [];
+    });
   }
 
   Future<void> _findRoutes() async {
@@ -153,189 +161,368 @@ class _RouteScreenState extends State<RouteScreen> {
 
   void _selectRoute(RouteOption route) => setState(() => _selected = route);
 
-  void _showKeyNeeded() {
+  void _startRoute() {
+    final route = _selected;
+    if (route == null) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Add ORS_API_KEY to .env to enable routing.'),
-      ),
+      SnackBar(content: Text('Navigation started on the ${route.name.toLowerCase()}.')),
     );
   }
+
+  void _showKeyNeeded() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Add ORS_API_KEY to .env to enable routing.')),
+    );
+  }
+
+  List<List<LatLng>> get _alternatePoints => [
+        for (final r in _routes)
+          if (r != _selected) r.points,
+      ];
 
   @override
   Widget build(BuildContext context) {
     final wide = MediaQuery.sizeOf(context).width > 850;
-    final mapHeight =
-        MediaQuery.sizeOf(context).height * (wide ? 0.55 : 0.36);
-
-    final form = _FormPanel(
-      controller: _searchCtrl,
-      locating: _locating,
-      searching: _searching,
-      loadingRoutes: _loadingRoutes,
-      results: _searchResults,
-      destinationLabel: _destinationLabel,
-      canFind: _start != null && _destination != null,
-      onSearch: _runSearch,
-      onPick: _pickResult,
-      onFind: _findRoutes,
-    );
 
     final map = RouteMap(
-      height: mapHeight,
+      height: double.infinity,
+      borderRadius: 0,
       start: _start,
       destination: _destination,
       routePoints: _selected?.points ?? const [],
+      alternatePoints: _alternatePoints,
       hotZones: _hotZones,
       onTap: _onMapTap,
     );
 
-    final cards = _RouteCards(
-      routes: _routes,
-      selected: _selected,
-      loading: _loadingRoutes,
-      hasDestination: _destination != null,
-      onSelect: _selectRoute,
-    );
+    if (wide) {
+      return Row(
+        children: [
+          SizedBox(width: 392, child: _Sidebar(state: this)),
+          Expanded(child: map),
+        ],
+      );
+    }
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppTheme.spaceMD),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 980),
-          child: wide
-              ? Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: 380,
-                      child: Column(children: [form, const SizedBox(height: AppTheme.spaceMD), cards]),
-                    ),
-                    const SizedBox(width: AppTheme.spaceMD),
-                    Expanded(child: map),
-                  ],
-                )
-              : Column(
-                  children: [
-                    form,
-                    const SizedBox(height: AppTheme.spaceMD),
-                    map,
-                    const SizedBox(height: AppTheme.spaceMD),
-                    cards,
-                  ],
-                ),
+    // Mobile: map hero with a floating directions bar and a bottom route sheet.
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        map,
+        Positioned(
+          top: AppTheme.spaceSM,
+          left: AppTheme.spaceSM,
+          right: AppTheme.spaceSM,
+          child: _DirectionsBar(state: this, elevated: true),
         ),
+        if (_destination != null)
+          Positioned(
+            left: AppTheme.spaceSM,
+            right: AppTheme.spaceSM,
+            bottom: AppTheme.spaceSM,
+            child: _RoutePanel(state: this, asSheet: true),
+          ),
+      ],
+    );
+  }
+}
+
+// ── Web sidebar ───────────────────────────────────────────────────────────────
+
+class _Sidebar extends StatelessWidget {
+  const _Sidebar({required this.state});
+
+  final _RouteScreenState state;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: const BoxDecoration(
+        color: AppTheme.bgCard,
+        border: Border(right: BorderSide(color: AppTheme.borderLight, width: 0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+                AppTheme.spaceMD, AppTheme.spaceMD, AppTheme.spaceMD, AppTheme.spaceSM),
+            child: _DirectionsBar(state: state, elevated: false),
+          ),
+          const Divider(height: 1),
+          Expanded(child: _RoutePanel(state: state, asSheet: false)),
+        ],
       ),
     );
   }
 }
 
-// ── Form panel ──────────────────────────────────────────────────────────────
+// ── Directions input bar (start + destination + results) ──────────────────────
 
-class _FormPanel extends StatelessWidget {
-  const _FormPanel({
-    required this.controller,
-    required this.locating,
-    required this.searching,
-    required this.loadingRoutes,
-    required this.results,
-    required this.destinationLabel,
-    required this.canFind,
-    required this.onSearch,
-    required this.onPick,
-    required this.onFind,
-  });
+class _DirectionsBar extends StatelessWidget {
+  const _DirectionsBar({required this.state, required this.elevated});
 
-  final TextEditingController controller;
-  final bool locating;
-  final bool searching;
-  final bool loadingRoutes;
-  final List<GeoResult> results;
-  final String destinationLabel;
-  final bool canFind;
-  final VoidCallback onSearch;
-  final ValueChanged<GeoResult> onPick;
-  final VoidCallback onFind;
+  final _RouteScreenState state;
+  final bool elevated;
 
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: AppTheme.bgCard,
-        borderRadius: BorderRadius.circular(AppTheme.radiusLG),
-        border: Border.all(color: AppTheme.borderLight, width: 0.5),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(AppTheme.spaceMD),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    final hasDestination = state._destination != null;
+
+    final inner = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Origin row
+        Row(
           children: [
-            Text('Heat-safe route', style: tt.headlineMedium),
-            const SizedBox(height: AppTheme.spaceMD - 2),
-            // Start (current location)
-            InputDecorator(
-              decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.my_location_outlined),
-                labelText: 'Start',
-              ),
+            const _Dot(color: AppTheme.markerBlue),
+            const SizedBox(width: AppTheme.spaceSM + 2),
+            Expanded(
               child: Text(
-                locating ? 'Locating…' : 'Current location',
-                style: tt.bodyMedium,
+                state._locating ? 'Locating…' : 'Your location',
+                style: tt.bodyMedium!.copyWith(color: AppTheme.textPrimary),
               ),
             ),
-            const SizedBox(height: AppTheme.spaceSM + 4),
-            // Destination search
-            TextField(
-              controller: controller,
-              textInputAction: TextInputAction.search,
-              onSubmitted: (_) => onSearch(),
-              decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.flag_outlined),
-                labelText: 'Destination',
-                hintText: 'Search a place, or tap the map',
-                suffixIcon: searching
-                    ? const Padding(
-                        padding: EdgeInsets.all(12),
-                        child: SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      )
-                    : IconButton(
-                        icon: const Icon(Icons.search),
-                        onPressed: onSearch,
-                      ),
+          ],
+        ),
+        const Padding(
+          padding: EdgeInsets.only(left: 5),
+          child: _DottedConnector(),
+        ),
+        // Destination row
+        Row(
+          children: [
+            const Icon(Icons.place, size: 18, color: AppTheme.riskExtreme),
+            const SizedBox(width: AppTheme.spaceSM),
+            Expanded(
+              child: TextField(
+                controller: state._searchCtrl,
+                textInputAction: TextInputAction.search,
+                onSubmitted: (_) => state._runSearch(),
+                decoration: const InputDecoration(
+                  isDense: true,
+                  border: InputBorder.none,
+                  enabledBorder: InputBorder.none,
+                  focusedBorder: InputBorder.none,
+                  filled: false,
+                  hintText: 'Choose destination — search or tap map',
+                ),
               ),
             ),
-            if (results.isNotEmpty) ...[
-              const SizedBox(height: AppTheme.spaceXS),
-              _SearchResults(results: results, onPick: onPick),
+            if (state._searching)
+              const Padding(
+                padding: EdgeInsets.all(6),
+                child: SizedBox(
+                    width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+              )
+            else if (hasDestination)
+              IconButton(
+                icon: const Icon(Icons.close, size: 18),
+                color: AppTheme.textHint,
+                onPressed: state._clearDestination,
+                visualDensity: VisualDensity.compact,
+              )
+            else
+              IconButton(
+                icon: const Icon(Icons.search, size: 20),
+                color: AppTheme.primary,
+                onPressed: state._runSearch,
+                visualDensity: VisualDensity.compact,
+              ),
+          ],
+        ),
+        if (state._searchResults.isNotEmpty) ...[
+          const Divider(height: AppTheme.spaceMD),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 220),
+            child: ListView(
+              shrinkWrap: true,
+              padding: EdgeInsets.zero,
+              children: [
+                for (final r in state._searchResults)
+                  ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: const Icon(Icons.place_outlined,
+                        size: 18, color: AppTheme.primary),
+                    title: Text(r.label,
+                        maxLines: 2, overflow: TextOverflow.ellipsis, style: tt.bodyMedium),
+                    onTap: () => state._pickResult(r),
+                  ),
+              ],
+            ),
+          ),
+        ],
+        if (!RoutingService.isConfigured) ...[
+          const SizedBox(height: AppTheme.spaceSM),
+          Row(
+            children: [
+              const Icon(Icons.info_outline, size: 14, color: AppTheme.riskMedium),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text('Add ORS_API_KEY to .env to enable routing.',
+                    style: tt.bodySmall!.copyWith(color: AppTheme.riskMedium)),
+              ),
             ],
-            const SizedBox(height: AppTheme.spaceMD),
-            SizedBox(
+          ),
+        ],
+      ],
+    );
+
+    final padded = Padding(
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppTheme.spaceMD, vertical: AppTheme.spaceSM + 2),
+      child: inner,
+    );
+
+    if (!elevated) return padded;
+    return Material(
+      elevation: 4,
+      borderRadius: BorderRadius.circular(AppTheme.radiusLG),
+      shadowColor: const Color(0x22000000),
+      color: AppTheme.bgCard,
+      child: padded,
+    );
+  }
+}
+
+class _Dot extends StatelessWidget {
+  const _Dot({required this.color});
+  final Color color;
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 12,
+        height: 12,
+        decoration: BoxDecoration(
+          color: color,
+          shape: BoxShape.circle,
+          border: Border.all(color: AppTheme.bgCard, width: 2),
+        ),
+      );
+}
+
+class _DottedConnector extends StatelessWidget {
+  const _DottedConnector();
+  @override
+  Widget build(BuildContext context) => Column(
+        children: List.generate(
+          3,
+          (_) => Container(
+            width: 2,
+            height: 3,
+            margin: const EdgeInsets.symmetric(vertical: 1),
+            color: AppTheme.borderMid,
+          ),
+        ),
+      );
+}
+
+// ── Route options panel (sidebar list / mobile bottom sheet) ──────────────────
+
+class _RoutePanel extends StatelessWidget {
+  const _RoutePanel({required this.state, required this.asSheet});
+
+  final _RouteScreenState state;
+  final bool asSheet;
+
+  @override
+  Widget build(BuildContext context) {
+    final tt = Theme.of(context).textTheme;
+    final routes = state._routes;
+
+    Widget body;
+    if (state._loadingRoutes) {
+      body = const Padding(
+        padding: EdgeInsets.all(AppTheme.spaceLG),
+        child: Center(child: CircularProgressIndicator()),
+      );
+    } else if (routes.isEmpty) {
+      body = Padding(
+        padding: const EdgeInsets.all(AppTheme.spaceMD),
+        child: Row(
+          children: [
+            const Icon(Icons.directions_walk, color: AppTheme.textHint),
+            const SizedBox(width: AppTheme.spaceSM),
+            Expanded(
+              child: Text(
+                state._destination != null
+                    ? 'No routes found — try another destination.'
+                    : 'Search a destination or tap the map to plan a heat-safe walk.',
+                style: tt.bodySmall,
+              ),
+            ),
+          ],
+        ),
+      );
+    } else {
+      body = Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(
+                AppTheme.spaceMD, AppTheme.spaceSM + 2, AppTheme.spaceMD, AppTheme.spaceXS),
+            child: Text('Heat-safe routes', style: tt.labelLarge),
+          ),
+          Flexible(
+            child: ListView(
+              shrinkWrap: true,
+              padding: EdgeInsets.zero,
+              children: [
+                for (final r in routes)
+                  _RouteRow(
+                    route: r,
+                    selected: r == state._selected,
+                    onTap: () => state._selectRoute(r),
+                  ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.all(AppTheme.spaceMD),
+            child: SizedBox(
               width: double.infinity,
               height: 46,
               child: FilledButton.icon(
-                onPressed: (canFind && !loadingRoutes) ? onFind : null,
-                icon: loadingRoutes
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: AppTheme.textOnDark),
-                      )
-                    : const Icon(Icons.alt_route, size: 18),
-                label: Text(loadingRoutes ? 'Finding…' : 'Find safer route'),
+                onPressed: state._selected == null ? null : state._startRoute,
+                icon: const Icon(Icons.navigation, size: 18),
+                label: const Text('Start'),
               ),
             ),
-            if (!RoutingService.isConfigured) ...[
-              const SizedBox(height: AppTheme.spaceSM),
-              Text(
-                'Routing is off — add ORS_API_KEY to .env to enable it.',
-                style: tt.bodySmall!.copyWith(color: AppTheme.riskMedium),
+          ),
+        ],
+      );
+    }
+
+    if (!asSheet) {
+      return SingleChildScrollView(child: body);
+    }
+    // Mobile bottom sheet styling.
+    return Material(
+      elevation: 8,
+      borderRadius: BorderRadius.circular(AppTheme.radiusLG),
+      shadowColor: const Color(0x33000000),
+      color: AppTheme.bgCard,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.42),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.only(top: 8, bottom: 2),
+              child: SizedBox(
+                width: 32,
+                height: 4,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: AppTheme.borderMid,
+                    borderRadius: BorderRadius.all(Radius.circular(AppTheme.radiusPill)),
+                  ),
+                ),
               ),
-            ],
+            ),
+            Flexible(child: SingleChildScrollView(child: body)),
           ],
         ),
       ),
@@ -343,131 +530,101 @@ class _FormPanel extends StatelessWidget {
   }
 }
 
-class _SearchResults extends StatelessWidget {
-  const _SearchResults({required this.results, required this.onPick});
+class _RouteRow extends StatelessWidget {
+  const _RouteRow({required this.route, required this.selected, required this.onTap});
 
-  final List<GeoResult> results;
-  final ValueChanged<GeoResult> onPick;
+  final RouteOption route;
+  final bool selected;
+  final VoidCallback onTap;
 
-  @override
-  Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: AppTheme.bgCard,
-        borderRadius: BorderRadius.circular(AppTheme.radiusMD),
-        border: Border.all(color: AppTheme.borderLight, width: 0.5),
-      ),
-      child: Column(
-        children: [
-          for (final r in results)
-            ListTile(
-              dense: true,
-              leading: const Icon(Icons.place_outlined,
-                  size: 18, color: AppTheme.primary),
-              title: Text(r.label,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodyMedium),
-              onTap: () => onPick(r),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-// ── Route cards ───────────────────────────────────────────────────────────────
-
-class _RouteCards extends StatelessWidget {
-  const _RouteCards({
-    required this.routes,
-    required this.selected,
-    required this.loading,
-    required this.hasDestination,
-    required this.onSelect,
-  });
-
-  final List<RouteOption> routes;
-  final RouteOption? selected;
-  final bool loading;
-  final bool hasDestination;
-  final ValueChanged<RouteOption> onSelect;
+  Color get _accent => switch (route.risk) {
+        HeatRisk.extreme || HeatRisk.high => AppTheme.riskExtreme,
+        HeatRisk.medium => AppTheme.riskMedium,
+        HeatRisk.low => AppTheme.riskNone,
+      };
 
   @override
   Widget build(BuildContext context) {
     final tt = Theme.of(context).textTheme;
-    if (loading) {
-      return const Padding(
-        padding: EdgeInsets.all(AppTheme.spaceLG),
-        child: Center(child: CircularProgressIndicator()),
-      );
-    }
-    if (routes.isEmpty) {
-      return DecoratedBox(
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+            horizontal: AppTheme.spaceMD, vertical: AppTheme.spaceSM + 2),
         decoration: BoxDecoration(
-          color: AppTheme.bgCard,
-          borderRadius: BorderRadius.circular(AppTheme.radiusLG),
-          border: Border.all(color: AppTheme.borderLight, width: 0.5),
+          color: selected ? AppTheme.primaryLight.withValues(alpha: .5) : null,
+          border: Border(
+            left: BorderSide(
+              color: selected ? AppTheme.primary : Colors.transparent,
+              width: 3,
+            ),
+          ),
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(AppTheme.spaceMD),
-          child: Row(
-            children: [
-              const Icon(Icons.directions_walk, color: AppTheme.textHint),
-              const SizedBox(width: AppTheme.spaceSM),
-              Expanded(
-                child: Text(
-                  hasDestination
-                      ? 'No routes yet — tap "Find safer route".'
-                      : 'Search a destination or tap the map to plan a heat-safe route.',
-                  style: tt.bodySmall,
-                ),
+        child: Row(
+          children: [
+            DecoratedBox(
+              decoration: BoxDecoration(
+                color: _accent.withValues(alpha: .12),
+                shape: BoxShape.circle,
               ),
-            ],
-          ),
+              child: SizedBox(
+                width: 38,
+                height: 38,
+                child: Icon(Icons.alt_route, size: 18, color: _accent),
+              ),
+            ),
+            const SizedBox(width: AppTheme.spaceSM + 2),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Text(route.duration,
+                          style: tt.headlineMedium!.copyWith(fontWeight: FontWeight.w700)),
+                      const SizedBox(width: AppTheme.spaceSM),
+                      Text(route.distance, style: tt.bodySmall),
+                      if (route.badge != null) ...[
+                        const SizedBox(width: AppTheme.spaceSM),
+                        _Badge(route.badge!),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(route.summary,
+                      style: tt.bodySmall!.copyWith(color: AppTheme.textSecondary),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis),
+                ],
+              ),
+            ),
+            if (selected)
+              const Icon(Icons.check_circle, color: AppTheme.primary, size: 20),
+          ],
         ),
-      );
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('Suggested routes', style: tt.labelLarge),
-        const SizedBox(height: AppTheme.spaceSM + 2),
-        for (final route in routes) ...[
-          _SelectableRouteCard(
-            route: route,
-            isSelected: identical(route, selected) || route == selected,
-            onSelect: onSelect,
-          ),
-          const SizedBox(height: AppTheme.spaceSM + 2),
-        ],
-      ],
+      ),
     );
   }
 }
 
-class _SelectableRouteCard extends StatelessWidget {
-  const _SelectableRouteCard({
-    required this.route,
-    required this.isSelected,
-    required this.onSelect,
-  });
-
-  final RouteOption route;
-  final bool isSelected;
-  final ValueChanged<RouteOption> onSelect;
-
+class _Badge extends StatelessWidget {
+  const _Badge(this.label);
+  final String label;
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(AppTheme.radiusLG),
-        border: Border.all(
-          color: isSelected ? AppTheme.primary : Colors.transparent,
-          width: 1.5,
-        ),
+        color: AppTheme.primaryLight,
+        borderRadius: BorderRadius.circular(AppTheme.radiusPill),
       ),
-      child: RouteOptionCard(route: route, onSelect: onSelect),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+        child: Text(label,
+            style: Theme.of(context)
+                .textTheme
+                .labelSmall!
+                .copyWith(color: AppTheme.primaryDark)),
+      ),
     );
   }
 }
