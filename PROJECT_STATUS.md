@@ -46,8 +46,9 @@ Keys live in `.env` (gitignored — never committed). Firebase provider toggles 
 - [x] Increment profile stat counters on report / verify (refresh on Profile to see)
 - [x] One verification per user per report (transaction + `verifiedBy`; needs rules deploy)
 - [x] New reports appear live on Map + Home without restart (refresh signal)
-- [ ] *(follow-up)* persist cool-spot suggestions; richer verification options
-  (shade available / water working / not accurate); time-based re-verification
+- [x] Persist cool-spot suggestions to Firestore (`CoolSpotService.submitCoolSpot`) + show on map
+- [ ] *(follow-up)* richer verification options (shade available / water working / not accurate);
+  time-based re-verification; verify community cool spots
 
 **P1 — headline feature**
 - [ ] Real heat-safe routing + heat scoring
@@ -74,8 +75,8 @@ the community/data-write half is mostly mock. Concretely:
   the **community hot-zone loop** (report → persist → appears on map → verify → profile stats).
 - **UI only, not connected:** Heat-safe routing (the headline P1 feature is still a dead form).
 - **Not implemented:** Tree-planting **events** (RSVP/water/donate), NDVI vegetation overlay,
-  a "Reports" tab, persisted saved routes, cool-spot *suggestions* (persistence).
-- **Dead/orphaned code:** `CoolSpotService`, `CoolSpotsScreen` — defined but unused.
+  a "Reports" tab, persisted saved routes.
+- **Dead/orphaned code:** `CoolSpotsScreen` — superseded by the Map's Cool Spots mode.
 
 With P0 done, hot-zone reports and verifications now reach Firestore and flow back into the UI;
 the main remaining mock is **heat-safe routing (P1)**.
@@ -125,14 +126,14 @@ AppShell  → 5 tabs (IndexedStack): Home · Route · Map · Data · Profile
 **Service layer pattern (real-or-dummy fallback):**
 - ✅ Used live: `WeatherService`, `PlacesService`, `NasaGibsService`, `LocationService`,
   `EnvironmentalDataService`, `FirebaseAuthService`, `FirestoreSeedService`, `UserProfileService`,
-  `ReportService`.
-- ❌ Defined but **never called**: `CoolSpotService` (cool-spot suggestions not yet persisted).
+  `ReportService`, `CoolSpotService`.
+- All services are now wired into the live UI.
 
 **Firestore** (`backend/firestore.rules`): `hotZones` + `coolSpots` are world-readable,
 create requires auth, updates limited to `verifications` / `verifiedBy`, no deletes;
 `users/{uid}` is owner-only. Seeded on first login via `FirestoreSeedService`. The Map + Home
-now **read `hotZones`** (and write new reports + verifications); cool spots on the map still come
-from OSM live, and `coolSpots` writes (suggestions) remain a TODO.
+**read `hotZones`** (and write new reports + verifications); the map merges **community-suggested
+`coolSpots`** (with real coordinates) alongside the live OSM cool-spot results.
 
 ---
 
@@ -144,7 +145,7 @@ These exist but are unreachable or unused. Either wire them up or delete them:
 - `lib/screens/cool_spots/cool_spots_screen.dart` — superseded by the Map "Cool Spots" mode.
 - ~~`report_service.dart`~~ — ✅ now used (submit / read / verify).
 - ~~Verify buttons + `CreateHotZoneReportScreen` submit~~ — ✅ now wired to Firestore.
-- `lib/services/cool_spot_service.dart` — still unused (cool-spot suggestions not persisted).
+- ~~`cool_spot_service.dart`~~ — ✅ now used (suggestions persist + show on the map).
 
 ---
 
@@ -205,6 +206,12 @@ falls back to the dummy-data prototype path if not configured. `flutter analyze`
 
 Newest first. Dates are absolute.
 
+- **2026-06-03** — **Cool-spot suggestions now persist.** The map's "Suggest a Cool Spot" form
+  writes to Firestore via `CoolSpotService.submitCoolSpot` (stores real lat/lng + category, returns
+  the doc id). The map merges community suggestions (those with real coordinates) with the live
+  OSM results and reloads on a `coolSpotRevision` signal, so a suggestion appears immediately and
+  survives refresh. No rules change needed (the `coolSpots` create rule was already open to
+  authed users). *(Not yet committed.)*
 - **2026-06-03** — **P0 fixes from testing.** (A) Report sheet's *Type* selector is now a
   scrollable modal picker (dropdown overlays leaked wheel-scroll to the Google Map). (B) New
   reports show live on Map + Home via a `hotZoneRevision` refresh signal (no restart). (D/E)

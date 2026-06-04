@@ -20,27 +20,37 @@ class CoolSpotService {
     }
   }
 
-  Future<void> submitCoolSpot({
+  /// Persists a community-suggested cool spot and returns its new document id.
+  Future<String> submitCoolSpot({
     required String name,
     required String type,
     required String amenity,
     required String openStatus,
     required double x,
     required double y,
+    String category = '',
+    double? lat,
+    double? lng,
+    String distance = 'Nearby',
     String? userId,
   }) async {
-    await _db.collection('coolSpots').add({
+    final ref = await _db.collection('coolSpots').add({
       'name': name,
       'type': type,
-      'distance': 'Nearby',
+      'category': category,
+      'distance': distance,
       'amenity': amenity,
       'openStatus': openStatus,
       'verifiedBy': 1,
       'x': x,
       'y': y,
+      'lat': ?lat,
+      'lng': ?lng,
+      'source': 'community',
       'userId': userId ?? 'anonymous',
       'createdAt': FieldValue.serverTimestamp(),
     });
+    return ref.id;
   }
 
   Future<void> verifyCoolSpot(String spotId) async {

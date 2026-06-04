@@ -9,6 +9,7 @@ import '../../models/heat_risk.dart';
 import '../../models/hot_zone_report.dart';
 import '../../models/nearby_report.dart';
 import '../../models/tree_pin.dart';
+import '../../services/cool_spot_service.dart';
 import '../../services/firebase_auth_service.dart';
 import '../../services/location_service.dart';
 import '../../services/places_service.dart';
@@ -159,8 +160,9 @@ class _MapScreenState extends State<MapScreen> {
     _activeFilter = widget.initialTreesSelected ? _treesFilter : 'All';
     _resolveLocation();
     _loadHotZones();
-    // Reload when a report is created elsewhere (e.g. the Home form).
+    // Reload when a report / suggestion is created elsewhere.
     hotZoneRevision.addListener(_loadHotZones);
+    coolSpotRevision.addListener(_reloadCoolSpots);
   }
 
   // Loads community hot-zone reports from Firestore (with a dummy fallback baked
@@ -268,19 +270,22 @@ class _MapScreenState extends State<MapScreen> {
   // returns nothing, so the list/markers are never empty.
   Future<void> _loadCoolSpots(double lat, double lng) async {
     setState(() => _loadingSpots = true);
-    List<CoolSpot> spots;
+    List<CoolSpot> osm;
     try {
-      spots = await PlacesService().nearbyCoolSpots(
+      osm = await PlacesService().nearbyCoolSpots(
         lat: lat,
         lng: lng,
         radiusMeters: CoolRouteMap.nearbyRadiusMeters,
       );
     } catch (_) {
-      spots = const [];
+      osm = const [];
     }
+    final community = await _loadCommunitySpots(lat, lng);
     if (!mounted) return;
     setState(() {
-      _coolSpots = spots.isNotEmpty ? spots : DummyData.coolSpots;
+      final base = osm.isNotEmpty ? osm : DummyData.coolSpots;
+      // Community suggestions first so a freshly added spot is easy to find.
+      _coolSpots = [...community, ...base];
       // Drop a stale focus that's no longer in the refreshed list.
       if (_focusedSpot != null && !_coolSpots.contains(_focusedSpot)) {
         _focusedSpot = null;
@@ -289,11 +294,35 @@ class _MapScreenState extends State<MapScreen> {
     });
   }
 
+  // Community-suggested cool spots from Firestore — only those with real
+  // coordinates (so seeded/dummy x-y-only spots are excluded), with distance
+  // recomputed from the current location.
+  Future<List<CoolSpot>> _loadCommunitySpots(double lat, double lng) async {
+    try {
+      final all = await CoolSpotService().getCoolSpots();
+      return all.where((s) => s.hasLatLng).map((s) {
+        final meters = Geolocator.distanceBetween(lat, lng, s.lat!, s.lng!);
+        return s.copyWith(distanceMeters: meters, distance: _formatDistance(meters));
+      }).toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static String _formatDistance(double meters) =>
+      meters < 1000 ? '${meters.round()} m' : '${(meters / 1000).toStringAsFixed(1)} km';
+
   @override
   void dispose() {
     hotZoneRevision.removeListener(_loadHotZones);
+    coolSpotRevision.removeListener(_reloadCoolSpots);
     _searchCtrl.dispose();
     super.dispose();
+  }
+
+  void _reloadCoolSpots() {
+    final loc = _userLocation;
+    _loadCoolSpots(loc?.latitude ?? 13.7563, loc?.longitude ?? 100.5018);
   }
 
   void _recenter() {

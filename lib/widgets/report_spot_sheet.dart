@@ -4,6 +4,7 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../models/cool_spot.dart';
 import '../models/heat_risk.dart';
 import '../models/hot_zone_report.dart';
+import '../services/cool_spot_service.dart';
 import '../services/firebase_auth_service.dart';
 import '../services/report_refresh.dart';
 import '../services/report_service.dart';
@@ -247,8 +248,9 @@ class _ReportSpotSheetState extends State<ReportSpotSheet> {
       return;
     }
 
-    // Cool spots remain a local pending pin for now (not yet persisted).
+    // Cool spot: optimistic pin, then persist to Firestore.
     final bucket = _coolTypes.firstWhere((t) => t.$1 == _type).$2;
+    final amenity = problem.isEmpty ? description : '$problem — $description';
     widget.onCoolSpot?.call(
       CoolSpot(
         id: 'pending-cool-$name',
@@ -257,10 +259,10 @@ class _ReportSpotSheetState extends State<ReportSpotSheet> {
         category: _type,
         distance: 'Here',
         distanceMeters: 0,
-        amenity: problem.isEmpty ? description : '$problem — $description',
-        openStatus: 'Pending',
-        verifiedBy: 0,
-        source: 'You (pending)',
+        amenity: amenity,
+        openStatus: 'Open',
+        verifiedBy: 1,
+        source: 'community',
         lat: lat,
         lng: lng,
         x: .5,
@@ -269,10 +271,25 @@ class _ReportSpotSheetState extends State<ReportSpotSheet> {
     );
     navigator.pop();
     messenger.showSnackBar(
-      const SnackBar(
-        content: Text('Cool spot added to the map as pending. Thanks!'),
-      ),
+      const SnackBar(content: Text('Cool spot suggested. Saving…')),
     );
+    try {
+      await CoolSpotService().submitCoolSpot(
+        name: name,
+        type: bucket,
+        category: _type,
+        amenity: amenity,
+        openStatus: 'Open',
+        x: .5,
+        y: .5,
+        lat: lat,
+        lng: lng,
+        userId: uid,
+      );
+      notifyCoolSpotsChanged();
+    } catch (e) {
+      debugPrint('VERIFY: cool spot persist error: $e');
+    }
   }
 
   String? _currentUid() {

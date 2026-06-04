@@ -6,3 +6,8 @@ import 'package:flutter/foundation.dart';
 final ValueNotifier<int> hotZoneRevision = ValueNotifier<int>(0);
 
 void notifyHotZonesChanged() => hotZoneRevision.value++;
+
+/// Same idea for community-suggested cool spots.
+final ValueNotifier<int> coolSpotRevision = ValueNotifier<int>(0);
+
+void notifyCoolSpotsChanged() => coolSpotRevision.value++;
