@@ -1,7 +1,7 @@
 # CoolRoute — Implementation Status vs. Spec
 
 > Audit of the current codebase against `CoolRoute_Concepts_Functions_Implementation2.0.pdf`
-> (Group 10, Integrated Project 2). Last reviewed: **2026-06-03**.
+> (Group 10, Integrated Project 2). Last reviewed: **2026-06-04**.
 >
 > This is a living reference. Update the status tags as features land.
 
@@ -94,7 +94,7 @@ Remaining gaps are mostly P2: tree-planting events, an NDVI layer, and persisted
 | Community hot zone reports | ✅ | Reports now **persist to Firestore**. `ReportSpotSheet` (Map) drops an optimistic pin then writes via `ReportService.submitHotZoneReport()`; `CreateHotZoneReportScreen` (Home, now with field controllers) writes too. Map + Home **read** reports via `getHotZoneReports()`. Both bump the author's `reportCount`. |
 | Cool spot finder | ✅ | **Best-implemented feature.** `PlacesService` queries the OSM Overpass API for real nearby libraries, malls, water points, parks, cafés, etc. — real lat/lng, real distances, category buckets. Falls back to dummy on failure. Filters + live search work. |
 | Weather integration | ✅ | `WeatherService` → WeatherAPI.com (`current.json`), parses temp/feels-like/humidity/UV. Falls back to dummy Bangkok weather when no key. Drives Home hero + Data info panel. |
-| NASA GIBS viewer | ✅ | `NasaGibsService` builds Worldview Snapshot image URLs; `environmental_data_screen.dart` renders them in a pan/zoom `InteractiveViewer` with date presets + custom date picker + 6 layers. |
+| NASA GIBS viewer | ✅ | Upgraded to a **live tiled map** (`gibs_tile_map.dart` via `flutter_map`): streams GIBS **WMTS** tiles (EPSG:3857) — Blue Marble basemap + science layer + coastlines — pannable/zoomable, world-bounded, with date presets + custom date. Replaced the old single-snapshot `InteractiveViewer`. Each layer now carries a plain-language `blurb`. *(teammate `566a772`)* |
 | Community tree-planting | 🟠 | Only **static viewing** of dummy tree pins on the Map (Trees 🌱 filter) + a detail sheet. No event creation, no RSVP/water/donate/attend, no NDVI overlay. |
 
 ---
@@ -109,7 +109,7 @@ Remaining gaps are mostly P2: tree-planting events, an NDVI layer, and persisted
 | Hot Zone Report | ✅ | Persists to Firestore (see §1 row). Spec's tree-planting-as-report-type + dedicated Reports tab still pending (P2). Cool-spot suggestions still local-only (P0 follow-up). |
 | Community Verification | ✅ (core) | "Still hot" / "Problem fixed" now call `ReportService.verifyReport(id)` (optimistic count bump + persist) and credit the verifier's `verifiedReportCount`. Follow-up: per-user "already verified" guard and the richer option set (shade available / water working / not accurate). |
 | Cool Spot Finder | ✅ | Real data + filters (Water / Shade / Air-conditioned / Open Now) on the Map. "Verified" filter exists on the (orphaned) standalone screen. |
-| NASA Environmental Data Viewer | 🟡 | 6 layers wired (Land Surface Temp, Sea Surface Temp, Cloud Cover, Aerosol/Air Quality, UV/Ozone, Weather Heat Index). **Missing the NDVI / vegetation layer** the spec calls out as candidate-planting-zone highlighting. |
+| NASA Environmental Data Viewer | 🟡 | 6 layers wired (Land Surface Temp, Sea Surface Temp, Cloud Cover, Aerosol/Air Quality, UV/Ozone, Weather Heat Index), now rendered as a live tiled WMTS map (see NASA GIBS row) with per-layer blurbs. **Still missing the NDVI / vegetation layer** the spec calls out for candidate-planting-zone highlighting. |
 | Profile and Saved Routes | ✅ (core) | **Profile is now a live 5th tab.** `profile_screen.dart` loads the signed-in user's profile via `UserProfileService.getCurrentUserProfile()` (Firestore `users/{uid}`, auto-created on first load), shows contribution stats (reports / verifications / saved routes) + account type (guest vs email), and supports **editing** name/role/home-area/heat-sensitivity (persists via `updateProfile`) and **sign out** (mobile had none before). Falls back to dummy if Firebase is down. *Still TODO: stats counters (`reportCount`/`verifiedReportCount`) aren't incremented yet because reports/verification don't persist (P0); saved routes aren't written yet (needs `addSavedRoute` wired from the Route tab).* |
 | Tree-Planting Events | ❌ | Not implemented beyond static pin viewing. No event model with RSVP/watering/donation/attendance, no creation flow. |
 
@@ -145,7 +145,8 @@ create requires auth, updates limited to `verifications` / `verifiedBy`, no dele
 These exist but are unreachable or unused. Either wire them up or delete them:
 - ~~`lib/screens/profile/profile_screen.dart`~~ — ✅ now a live 5th tab.
 - ~~`user_profile_service.dart`~~ — ✅ now used by the Profile tab (+ new `updateProfile`).
-- `lib/screens/cool_spots/cool_spots_screen.dart` — superseded by the Map "Cool Spots" mode.
+- `lib/screens/cool_spots/cool_spots_screen.dart` — superseded by the Map "Cool Spots" mode;
+  enhanced in `566a772` but still **not wired into navigation** (no `AppShell` entry).
 - ~~`report_service.dart`~~ — ✅ now used (submit / read / verify).
 - ~~Verify buttons + `CreateHotZoneReportScreen` submit~~ — ✅ now wired to Firestore.
 - ~~`cool_spot_service.dart`~~ — ✅ now used (suggestions persist + show on the map).
@@ -209,11 +210,25 @@ falls back to the dummy-data prototype path if not configured. `flutter analyze`
 
 Newest first. Dates are absolute.
 
+- **2026-06-04** — **Pulled teammate work from `main`** (merge `03d05c6`); `flutter pub get` +
+  analyze clean. Verified the merge preserved the P0 + cool-spot Firestore wiring in the rewritten
+  `map_screen.dart`. Two teammate commits:
+  - **`dca33b3` (Waiyanheinoo) — "some ui error":** large `map_screen.dart` responsiveness rework
+    (web + emulator); wrapped the Route screen's directions bar + route panel in
+    `PointerInterceptor` so map mouse events don't bleed through the floating panels. Added the
+    `pointer_interceptor` dependency.
+  - **`566a772` (Albert) — NASA GIBS accuracy + responsiveness:** new `gibs_tile_map.dart` renders
+    GIBS as a live tiled `flutter_map` (WMTS / EPSG:3857: Blue Marble basemap + science layer +
+    coastlines, zoomable, world-bounded) instead of one static snapshot; `EnvironmentalLayer`
+    gained `blurb` + tile-matrix metadata; `nasa_gibs_service` gained WMTS template builders.
+    Added `flutter_map` + `latlong2`. (`cool_spots_screen.dart` was also enhanced but is still
+    not wired into navigation — remains orphaned.)
 - **2026-06-03** — **Route UI redesign (Google-Maps-like).** Map is now the hero: a floating
   directions bar (origin dot → destination search, with a clear button), alternate routes drawn
   in grey beneath the selected teal one, and route options as a left sidebar on web / a bottom
   sheet on mobile with compact rows (big duration + Recommended badge + hot-zone summary) and a
-  Start button. `RouteMap` gained `alternatePoints`. *(Uncommitted — pending push.)*
+  Start button. `RouteMap` gained `alternatePoints`. Committed `c27cf34` (later wrapped in
+  `PointerInterceptor` by `dca33b3`).
 - **2026-06-03** — **P1: real heat-safe routing.** New `RoutingService` (OpenRouteService —
   CORS-friendly, needs `ORS_API_KEY`) does geocoding + walking directions (with alternatives).
   `RoutePlanner` scores each route by proximity to reported hot zones and labels Fastest / Cooler
