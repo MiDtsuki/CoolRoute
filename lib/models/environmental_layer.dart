@@ -47,4 +47,35 @@ class EnvironmentalLayer {
   final bool gibsMonthly;
 
   final LayerPalette palette;
+
+  /// Returns a copy with the given fields replaced. Used when merging live
+  /// readings (UV, Heat Index) into a base layer without dropping its GIBS
+  /// tile config — see [EnvironmentalDataService].
+  EnvironmentalLayer copyWith({
+    String? name,
+    String? source,
+    String? status,
+    String? value,
+    String? blurb,
+    String? gibsLayerId,
+    String? gibsTileMatrixSet,
+    int? gibsMaxZoom,
+    String? gibsFormat,
+    bool? gibsMonthly,
+    LayerPalette? palette,
+  }) {
+    return EnvironmentalLayer(
+      name: name ?? this.name,
+      source: source ?? this.source,
+      status: status ?? this.status,
+      value: value ?? this.value,
+      blurb: blurb ?? this.blurb,
+      gibsLayerId: gibsLayerId ?? this.gibsLayerId,
+      gibsTileMatrixSet: gibsTileMatrixSet ?? this.gibsTileMatrixSet,
+      gibsMaxZoom: gibsMaxZoom ?? this.gibsMaxZoom,
+      gibsFormat: gibsFormat ?? this.gibsFormat,
+      gibsMonthly: gibsMonthly ?? this.gibsMonthly,
+      palette: palette ?? this.palette,
+    );
+  }
 }

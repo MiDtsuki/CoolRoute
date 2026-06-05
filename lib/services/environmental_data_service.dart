@@ -35,24 +35,14 @@ class EnvironmentalDataService {
     return base.map((layer) {
       switch (layer.name) {
         case 'UV / Ozone Layer':
-          return EnvironmentalLayer(
-            name: layer.name,
-            source: layer.source,
+          return layer.copyWith(
             status: _uvStatus(weather.uvIndex),
             value: weather.uvIndex,
-            blurb: layer.blurb,
-            gibsLayerId: layer.gibsLayerId,
-            palette: layer.palette,
           );
         case 'Weather Heat Index':
-          return EnvironmentalLayer(
-            name: layer.name,
-            source: layer.source,
+          return layer.copyWith(
             status: _heatStatus(weather.feelsLikeC),
             value: '${weather.feelsLikeC} C',
-            blurb: layer.blurb,
-            gibsLayerId: layer.gibsLayerId,
-            palette: layer.palette,
           );
         default:
           return layer;

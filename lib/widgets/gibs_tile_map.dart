@@ -12,7 +12,7 @@ import '../theme/app_theme.dart';
 /// a static Blue Marble basemap underneath, the selected science layer on
 /// top, and coastline outlines above that. All endpoints are free and need
 /// no API key. Web-safe — flutter_map is pure Dart over Flutter canvas.
-class GibsTileMap extends StatelessWidget {
+class GibsTileMap extends StatefulWidget {
   const GibsTileMap({
     super.key,
     required this.layer,
@@ -29,8 +29,16 @@ class GibsTileMap extends StatelessWidget {
   /// Shown beneath the map as the loading/offline backdrop.
   final Widget fallback;
 
+  @override
+  State<GibsTileMap> createState() => _GibsTileMapState();
+}
+
+class _GibsTileMapState extends State<GibsTileMap> {
   // Bangkok — the app's anchor location (see CLAUDE.md dummy-data rules).
   static const _bangkok = LatLng(13.7563, 100.5018);
+
+  static const _minZoom = 1.0;
+  static const _maxZoom = 9.0;
 
   // Web-Mercator world extent. Constraining the camera to this keeps the view
   // pinned to a single Earth — no horizontal world-copy duplication when
@@ -40,8 +48,26 @@ class GibsTileMap extends StatelessWidget {
     const LatLng(85.05112878, 180),
   );
 
+  final _controller = MapController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _zoomBy(double delta) {
+    final camera = _controller.camera;
+    final next = (camera.zoom + delta).clamp(_minZoom, _maxZoom);
+    if (next == camera.zoom) return;
+    _controller.move(camera.center, next);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final layer = widget.layer;
+    final date = widget.date;
+    final gibs = widget.gibs;
     final layerId = layer.gibsLayerId!;
     final dataTemplate = gibs.wmtsTemplate(
       layerId: layerId,
@@ -54,13 +80,14 @@ class GibsTileMap extends StatelessWidget {
     return Stack(
       fit: StackFit.expand,
       children: [
-        fallback,
+        widget.fallback,
         FlutterMap(
+          mapController: _controller,
           options: MapOptions(
             initialCenter: _bangkok,
             initialZoom: 5,
-            minZoom: 1,
-            maxZoom: 9,
+            minZoom: _minZoom,
+            maxZoom: _maxZoom,
             backgroundColor: AppTheme.bgDark,
             // Single-world view: block panning past the date line and stop the
             // camera ever showing the void above/below the poles.
@@ -93,7 +120,83 @@ class GibsTileMap extends StatelessWidget {
             const _Attribution(),
           ],
         ),
+        _ZoomControls(
+          onZoomIn: () => _zoomBy(1),
+          onZoomOut: () => _zoomBy(-1),
+        ),
       ],
+    );
+  }
+}
+
+/// Compact zoom in/out stack pinned to the bottom-left of the GIBS map.
+class _ZoomControls extends StatelessWidget {
+  const _ZoomControls({required this.onZoomIn, required this.onZoomOut});
+
+  final VoidCallback onZoomIn;
+  final VoidCallback onZoomOut;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.bottomLeft,
+      child: Padding(
+        padding: const EdgeInsets.all(AppTheme.spaceSM),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: AppTheme.bgDark.withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(AppTheme.radiusMD),
+            border: Border.all(color: AppTheme.textOnDarkDim),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _ZoomButton(
+                icon: Icons.add,
+                tooltip: 'Zoom in',
+                onTap: onZoomIn,
+              ),
+              const SizedBox(
+                width: 28,
+                child: Divider(height: 1, color: AppTheme.textOnDarkDim),
+              ),
+              _ZoomButton(
+                icon: Icons.remove,
+                tooltip: 'Zoom out',
+                onTap: onZoomOut,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ZoomButton extends StatelessWidget {
+  const _ZoomButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppTheme.radiusSM),
+        child: SizedBox(
+          width: 36,
+          height: 36,
+          child: Icon(icon, size: 18, color: AppTheme.textOnDark),
+        ),
+      ),
     );
   }
 }
